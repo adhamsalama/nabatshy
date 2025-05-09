@@ -58,17 +58,23 @@ export const SearchPage = () => {
   const [sortField, setSortField] = useState<'start_time' | 'end_time' | 'duration'>('start_time');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [startDate, setStartDate] = useState(() => new Date(Date.now() - 5 * 60 * 1000));
+  const [endDate, setEndDate] = useState(() => new Date());
   const navigate = useNavigate();
 
+
   const handleSearch = async (pageNum: number = 1) => {
-    if (!query.trim()) return;
+    if (!startDate || !endDate || isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      setError('Invalid start or end date');
+      return;
+    }
 
     setLoading(true);
     setError(null);
 
     try {
       const response = await fetch(
-        `http://localhost:4318/v1/search?query=${encodeURIComponent(query)}&page=${pageNum}&pageSize=${pageSize}&sortField=${sortField}&sortOrder=${sortOrder}`
+        `http://localhost:4318/v1/search?query=${encodeURIComponent(query)}&page=${pageNum}&pageSize=${pageSize}&sortField=${sortField}&sortOrder=${sortOrder}&start=${startDate.toISOString()}&end=${endDate.toISOString()}`
       );
       if (!response.ok) {
         const errorText = await response.text();
@@ -86,6 +92,11 @@ export const SearchPage = () => {
       setLoading(false);
     }
   };
+  ;
+
+  useEffect(() => {
+    handleSearch(1);
+  }, []);
 
   const handleKeyPress = (event: React.KeyboardEvent) => {
     if (event.key === 'Enter') {
@@ -141,6 +152,23 @@ export const SearchPage = () => {
         Search Traces
       </Typography>
 
+      <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+        <TextField
+          label="Start Time"
+          type="datetime-local"
+          value={format(startDate, "yyyy-MM-dd'T'HH:mm")}
+          onChange={(e) => setStartDate(new Date(e.target.value))}
+          InputLabelProps={{ shrink: true }}
+        />
+        <TextField
+          label="End Time"
+          type="datetime-local"
+          value={format(endDate, "yyyy-MM-dd'T'HH:mm")}
+          onChange={(e) => setEndDate(new Date(e.target.value))}
+          InputLabelProps={{ shrink: true }}
+        />
+      </Box>
+
       <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
         <TextField
           fullWidth
@@ -174,7 +202,7 @@ export const SearchPage = () => {
         <Typography sx={{ mt: 2, textAlign: 'center' }}>
           Enter a search query to begin
         </Typography>
-      ) : searchResponse.results.length === 0 ? (
+      ) : searchResponse.results?.length === 0 ? (
         <Typography sx={{ mt: 2, textAlign: 'center' }}>
           No results found
         </Typography>
@@ -189,7 +217,7 @@ export const SearchPage = () => {
                   <TableCell>Name</TableCell>
                   <TableCell>Service</TableCell>
                   <TableCell>
-                    <Box 
+                    <Box
                       sx={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}
                       onClick={() => handleSortChange('duration')}
                     >
@@ -197,7 +225,7 @@ export const SearchPage = () => {
                     </Box>
                   </TableCell>
                   <TableCell>
-                    <Box 
+                    <Box
                       sx={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}
                       onClick={() => handleSortChange('start_time')}
                     >
@@ -205,7 +233,7 @@ export const SearchPage = () => {
                     </Box>
                   </TableCell>
                   <TableCell>
-                    <Box 
+                    <Box
                       sx={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}
                       onClick={() => handleSortChange('end_time')}
                     >
@@ -216,7 +244,7 @@ export const SearchPage = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {searchResponse.results.map((result) => {
+                {searchResponse.results?.map((result) => {
                   const rowId = `${result.TraceID}-${result.SpanID}`;
                   const isExpanded = expandedRows.has(rowId);
                   const hasAttributes = Object.keys(result.ResourceAttrs || {}).length > 0;
@@ -311,4 +339,5 @@ export const SearchPage = () => {
       )}
     </Box>
   );
-}; 
+};
+

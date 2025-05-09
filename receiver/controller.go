@@ -345,10 +345,6 @@ func (c *TelemetryController) formatOldOTELData(
 
 func (c *TelemetryController) searchTraces(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query().Get("query")
-	if query == "" {
-		http.Error(w, "query parameter is required", http.StatusBadRequest)
-		return
-	}
 
 	page, err := strconv.Atoi(r.URL.Query().Get("page"))
 	if err != nil || page < 1 {
@@ -360,11 +356,7 @@ func (c *TelemetryController) searchTraces(w http.ResponseWriter, r *http.Reques
 		pageSize = 10
 	}
 
-	// Get sort parameters
 	sortField := r.URL.Query().Get("sortField")
-	if sortField != "start_time" && sortField != "end_time" {
-		sortField = "start_time" // default to start_time
-	}
 
 	sortOrder := r.URL.Query().Get("sortOrder")
 	if sortOrder != "asc" && sortOrder != "desc" {
@@ -375,8 +367,23 @@ func (c *TelemetryController) searchTraces(w http.ResponseWriter, r *http.Reques
 		Field: sortField,
 		Order: sortOrder,
 	}
-
-	results, err := c.service.SearchTraces(r.Context(), query, page, pageSize, sort)
+	var dateRange DateRange
+	startStr := r.URL.Query().Get("start")
+	endStr := r.URL.Query().Get("end")
+	if startStr != "" && endStr != "" {
+		startTime, err1 := time.Parse(time.RFC3339, startStr)
+		endTime, err2 := time.Parse(time.RFC3339, endStr)
+		if err1 == nil && err2 == nil {
+			dateRange = DateRange{Start: startTime, End: endTime}
+		} else {
+			http.Error(w, "invalid start or end time format", http.StatusBadRequest)
+			return
+		}
+	} else {
+		timeRange := r.URL.Query().Get("timeRange")
+		dateRange = getDateRangeFromQuery(timeRange)
+	}
+	results, err := c.service.SearchTraces(r.Context(), dateRange, query, page, pageSize, sort)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to search traces: %v", err), http.StatusInternalServerError)
 		return

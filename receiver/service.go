@@ -608,8 +608,9 @@ func (s *TelemetryService) GetTraceList(ctx context.Context) ([]TraceList, error
 	return traces, rows.Err()
 }
 
-func (s *TelemetryService) SearchTraces(ctx context.Context, query string, page, pageSize int, sort SortOption) (*SearchResponse, error) {
-	// First, get total count
+func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange, query string, page, pageSize int, sort SortOption) (*SearchResponse, error) {
+	startNano := dateRange.Start.UnixNano()
+	endNano := dateRange.End.UnixNano()
 	countDS := s.DB.
 		From(goqu.T("span").As("s1")).
 		Join(goqu.T("scope"), goqu.On(goqu.I("s1.scope_id").Eq(goqu.I("scope.scope_id")))).
@@ -624,6 +625,8 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, query string, page,
 				goqu.I("ra.key").ILike("%"+query+"%"),
 				goqu.I("ra.value").ILike("%"+query+"%"),
 			),
+			goqu.I("s1.start_time_unix_nano").Gte(startNano),
+			goqu.I("s1.end_time_unix_nano").Lte(endNano),
 		)
 
 	countSQL, countArgs, err := countDS.ToSQL()
@@ -662,6 +665,8 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, query string, page,
 				goqu.I("ra.key").ILike("%"+query+"%"),
 				goqu.I("ra.value").ILike("%"+query+"%"),
 			),
+			goqu.I("s1.start_time_unix_nano").Gte(startNano),
+			goqu.I("s1.end_time_unix_nano").Lte(endNano),
 		)
 
 	// Apply sorting
@@ -680,17 +685,15 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, query string, page,
 		}
 	case "duration":
 		if sort.Order == "asc" {
-			ds = ds.Order(goqu.L("s1.duration_ns / 1000000").Asc())
+			ds = ds.Order(goqu.L("s1.duration_ns").Asc())
 		} else {
-			ds = ds.Order(goqu.L("s1.duration_ns / 1000000").Desc())
+			ds = ds.Order(goqu.L("s1.duration_ns").Desc())
 		}
 	default:
-		// Default to start_time desc if no valid sort option
 		ds = ds.Order(goqu.I("s1.start_time_unix_nano").Desc())
 	}
 
 	ds = ds.Limit(uint(pageSize)).Offset(uint(offset))
-
 	sqlStr, args, err := ds.ToSQL()
 	if err != nil {
 		return nil, err
