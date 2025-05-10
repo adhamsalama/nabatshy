@@ -116,7 +116,6 @@ export const SearchPage: React.FC = () => {
 
   useEffect(() => {
     handleSearch(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleKeyPress = (event: React.KeyboardEvent) => {
@@ -170,7 +169,7 @@ export const SearchPage: React.FC = () => {
         </Typography>
       </Box>
 
-      <Box sx={{ gridColumn: 'span 12', display: 'flex', gap: 2 }}>
+      <Box sx={{ gridColumn: 'span 12', display: 'flex', gap: 2, flexWrap: 'wrap' }}>
         <TextField
           label="Start Time"
           type="datetime-local"
@@ -216,21 +215,25 @@ export const SearchPage: React.FC = () => {
         </Box>
       )}
 
-      {!loading && percentileSeries.length > 0 && (
-        <Box sx={{ gridColumn: 'span 12' }}>
-          <PercentileChart data={percentileSeries} percentile={95} />
-        </Box>
-      )}
-
-      {!loading && traceCountSeries.length > 0 && (
-        <Box sx={{ gridColumn: 'span 12' }}>
-          <TraceCountChart data={traceCountSeries} />
-        </Box>
-      )}
-
-      {!loading && avgDurationSeries.length > 0 && (
-        <Box sx={{ gridColumn: 'span 12' }}>
-          <AvgDurationChart data={avgDurationSeries} />
+      {!loading && percentileSeries?.length > 0 && traceCountSeries?.length > 0 && avgDurationSeries?.length > 0 && (
+        <Box
+          sx={{
+            gridColumn: 'span 12',
+            display: 'flex',
+            flexWrap: 'wrap',
+            justifyContent: 'space-between',
+            gap: 2,
+          }}
+        >
+          <Box sx={{ flex: '1 1 30%', minWidth: 300 }}>
+            <PercentileChart data={percentileSeries} percentile={95} />
+          </Box>
+          <Box sx={{ flex: '1 1 30%', minWidth: 300 }}>
+            <TraceCountChart data={traceCountSeries} />
+          </Box>
+          <Box sx={{ flex: '1 1 30%', minWidth: 300 }}>
+            <AvgDurationChart data={avgDurationSeries} />
+          </Box>
         </Box>
       )}
 
@@ -328,7 +331,7 @@ export const SearchPage: React.FC = () => {
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              mt: 2
+              mt: 2,
             }}
           >
             <FormControl size="small" sx={{ minWidth: 120 }}>
