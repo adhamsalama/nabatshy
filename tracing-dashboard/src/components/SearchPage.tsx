@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import {
   Box,
@@ -30,6 +31,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import { format } from 'date-fns';
 import PercentileChart from './PercentileChart';
+import TraceCountChart from './TraceCountChart';
 
 interface SearchResult {
   TraceID: string;
@@ -42,8 +44,8 @@ interface SearchResult {
 }
 
 interface TimePercentile {
-  timestamp: string; // ISO string
-  value: number;     // ms
+  timestamp: string;
+  value: number;
 }
 
 interface SearchResponse {
@@ -52,12 +54,14 @@ interface SearchResponse {
   page: number;
   pageSize: number;
   percentile: TimePercentile[];
+  traceCount: TimePercentile[];
 }
 
 export const SearchPage: React.FC = () => {
   const [query, setQuery] = useState('');
   const [searchResponse, setSearchResponse] = useState<SearchResponse | null>(null);
   const [percentileSeries, setPercentileSeries] = useState<TimePercentile[]>([]);
+  const [traceCountSeries, setTraceCountSeries] = useState<TimePercentile[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
@@ -92,12 +96,14 @@ export const SearchPage: React.FC = () => {
       const data: SearchResponse = await response.json();
       setSearchResponse(data);
       setPercentileSeries(data.percentile);
+      setTraceCountSeries(data.traceCount);
       setPage(pageNum);
       setTotalCount(data.totalCount || 0);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
       setSearchResponse(null);
       setPercentileSeries([]);
+      setTraceCountSeries([]);
       setTotalCount(0);
     } finally {
       setLoading(false);
@@ -160,7 +166,6 @@ export const SearchPage: React.FC = () => {
         </Typography>
       </Box>
 
-      {/* Date pickers */}
       <Box sx={{ gridColumn: 'span 12', display: 'flex', gap: 2 }}>
         <TextField
           label="Start Time"
@@ -178,7 +183,6 @@ export const SearchPage: React.FC = () => {
         />
       </Box>
 
-      {/* Search bar */}
       <Box sx={{ gridColumn: 'span 12', display: 'flex', gap: 2 }}>
         <TextField
           fullWidth
@@ -208,10 +212,15 @@ export const SearchPage: React.FC = () => {
         </Box>
       )}
 
-      {/* Percentile chart */}
-      {!loading && percentileSeries?.length > 0 && (
+      {!loading && percentileSeries.length > 0 && (
         <Box sx={{ gridColumn: 'span 12' }}>
           <PercentileChart data={percentileSeries} percentile={95} />
+        </Box>
+      )}
+
+      {!loading && traceCountSeries.length > 0 && (
+        <Box sx={{ gridColumn: 'span 12' }}>
+          <TraceCountChart data={traceCountSeries} />
         </Box>
       )}
 
@@ -240,8 +249,8 @@ export const SearchPage: React.FC = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {searchResponse.results?.map(result => {
-                    const rowId = `${result.TraceID}-${result.SpanID}`;
+                  {searchResponse.results?.map((result, i) => {
+                    const rowId = `${result.TraceID}-${result.SpanID}-${i}`;
                     const isExpanded = expandedRows.has(rowId);
                     const hasAttrs = Object.keys(result.ResourceAttrs).length > 0;
                     return (
@@ -333,8 +342,7 @@ export const SearchPage: React.FC = () => {
             </Box>
           </Box>
         </>
-      )}
-    </Box>
+      )}    </Box>
   );
 };
 

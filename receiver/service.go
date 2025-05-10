@@ -110,6 +110,7 @@ type SearchResponse struct {
 	Page              int              `json:"page"`
 	PageSize          int              `json:"pageSize"`
 	PercentileResults []TimePercentile `json:"percentile"`
+	TraceCountResults []TimePercentile `json:"traceCount"`
 }
 
 type SortOption struct {
@@ -662,6 +663,10 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 	if pErr != nil {
 		panic(pErr)
 	}
+	tcResult, tcErr := s.getTraceCountForQuery(ctx, queryString, intervalSQL, dateRange)
+	if tcErr != nil {
+		panic(tcErr)
+	}
 	// Apply sorting
 	switch sort.Field {
 	case "start_time":
@@ -748,6 +753,7 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 		Page:              page,
 		PageSize:          pageSize,
 		PercentileResults: pResult,
+		TraceCountResults: tcResult,
 	}, rows.Err()
 }
 
@@ -1247,4 +1253,40 @@ func (s *TelemetryService) baseSpanDS(query string, startNs, endNs int64) *goqu.
 			goqu.I("s1.start_time_unix_nano").Gte(startNs),
 			goqu.I("s1.end_time_unix_nano").Lte(endNs),
 		)
+}
+
+// getTraceCountForQuery mirrors getPercentileForQuery but returns counts per interval
+func (s *TelemetryService) getTraceCountForQuery(
+	ctx context.Context,
+	queryString string,
+	intervalSQL string,
+	dateRange DateRange,
+) ([]TimePercentile, error) {
+	cSeriesQuery := fmt.Sprintf(`
+        WITH stats as (
+            %s
+        )
+        SELECT
+            toStartOfInterval(
+                toDateTime(stats.start_time_unix_nano / 1e9),
+                INTERVAL %s
+            ) AS ts,
+            count() / 1.0 AS cnt
+        FROM stats
+        GROUP BY ts
+        ORDER BY ts
+    `, queryString, intervalSQL)
+
+	cRows, err := (*s.Ch).Query(ctx, cSeriesQuery)
+	if err != nil {
+		return nil, fmt.Errorf("query error: %w", err)
+	}
+	defer cRows.Close()
+
+	// Pad missing intervals with zero counts
+	cResult, padErr := padQueryResult(cRows, intervalSQL, dateRange)
+	if padErr != nil {
+		panic(padErr)
+	}
+	return cResult, nil
 }
