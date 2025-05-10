@@ -21,7 +21,7 @@ import {
   InputLabel,
   SelectChangeEvent,
   Collapse,
-  Button
+  Button,
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import SearchIcon from '@mui/icons-material/Search';
@@ -29,6 +29,7 @@ import InfoIcon from '@mui/icons-material/Info';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import { format } from 'date-fns';
+import PercentileChart from './PercentileChart';
 
 interface SearchResult {
   TraceID: string;
@@ -40,16 +41,23 @@ interface SearchResult {
   ResourceAttrs: Record<string, string>;
 }
 
+interface TimePercentile {
+  timestamp: string; // ISO string
+  value: number;     // ms
+}
+
 interface SearchResponse {
   results: SearchResult[];
   totalCount: number;
   page: number;
   pageSize: number;
+  percentile: TimePercentile[];
 }
 
-export const SearchPage = () => {
+export const SearchPage: React.FC = () => {
   const [query, setQuery] = useState('');
   const [searchResponse, setSearchResponse] = useState<SearchResponse | null>(null);
+  const [percentileSeries, setPercentileSeries] = useState<TimePercentile[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
@@ -62,7 +70,6 @@ export const SearchPage = () => {
   const [endDate, setEndDate] = useState(() => new Date());
   const navigate = useNavigate();
 
-
   const handleSearch = async (pageNum: number = 1) => {
     if (!startDate || !endDate || isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
       setError('Invalid start or end date');
@@ -74,28 +81,32 @@ export const SearchPage = () => {
 
     try {
       const response = await fetch(
-        `http://localhost:4318/v1/search?query=${encodeURIComponent(query)}&page=${pageNum}&pageSize=${pageSize}&sortField=${sortField}&sortOrder=${sortOrder}&start=${startDate.toISOString()}&end=${endDate.toISOString()}`
+        `http://localhost:4318/v1/search?query=${encodeURIComponent(query)}&page=${pageNum}&pageSize=${pageSize}` +
+        `&sortField=${sortField}&sortOrder=${sortOrder}` +
+        `&start=${startDate.toISOString()}&end=${endDate.toISOString()}`
       );
       if (!response.ok) {
         const errorText = await response.text();
         throw new Error(`Search failed: ${errorText}`);
       }
-      const data = await response.json();
+      const data: SearchResponse = await response.json();
       setSearchResponse(data);
+      setPercentileSeries(data.percentile);
       setPage(pageNum);
       setTotalCount(data.totalCount || 0);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
       setSearchResponse(null);
+      setPercentileSeries([]);
       setTotalCount(0);
     } finally {
       setLoading(false);
     }
   };
-  ;
 
   useEffect(() => {
     handleSearch(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleKeyPress = (event: React.KeyboardEvent) => {
@@ -104,13 +115,13 @@ export const SearchPage = () => {
     }
   };
 
-  const handlePageChange = (event: React.ChangeEvent<unknown>, value: number) => {
+  const handlePageChange = (_: React.ChangeEvent<unknown>, value: number) => {
     handleSearch(value);
   };
 
   const handlePageSizeChange = (event: SelectChangeEvent<number>) => {
-    const newPageSize = event.target.value as number;
-    setPageSize(newPageSize);
+    const newSize = event.target.value as number;
+    setPageSize(newSize);
     handleSearch(1);
   };
 
@@ -124,58 +135,56 @@ export const SearchPage = () => {
     handleSearch(1);
   };
 
-  const formatTimestamp = (timestamp: number) => {
-    return format(new Date(timestamp / 1000000), 'yyyy-MM-dd HH:mm:ss.SSS');
-  };
+  const formatTimestamp = (ns: number) =>
+    format(new Date(ns / 1e6), 'yyyy-MM-dd HH:mm:ss.SSS');
 
-  const formatDuration = (duration: number) => {
-    return `${duration.toFixed(2)}ms`;
-  };
+  const formatDuration = (ms: number) => `${ms.toFixed(2)} ms`;
 
-  const totalPages = searchResponse ? Math.ceil(searchResponse.totalCount / searchResponse.pageSize) : 0;
+  const totalPages = searchResponse
+    ? Math.ceil(searchResponse.totalCount / searchResponse.pageSize)
+    : 0;
 
   const toggleRow = (rowId: string) => {
     setExpandedRows(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(rowId)) {
-        newSet.delete(rowId);
-      } else {
-        newSet.add(rowId);
-      }
-      return newSet;
+      const next = new Set(prev);
+      next.has(rowId) ? next.delete(rowId) : next.add(rowId);
+      return next;
     });
   };
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom>
-        Search Traces
-      </Typography>
+    <Box sx={{ p: 3, display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 2 }}>
+      <Box sx={{ gridColumn: 'span 12' }}>
+        <Typography variant="h4" gutterBottom>
+          Search Traces
+        </Typography>
+      </Box>
 
-      <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+      {/* Date pickers */}
+      <Box sx={{ gridColumn: 'span 12', display: 'flex', gap: 2 }}>
         <TextField
           label="Start Time"
           type="datetime-local"
           value={format(startDate, "yyyy-MM-dd'T'HH:mm")}
-          onChange={(e) => setStartDate(new Date(e.target.value))}
+          onChange={e => setStartDate(new Date(e.target.value))}
           InputLabelProps={{ shrink: true }}
         />
         <TextField
           label="End Time"
           type="datetime-local"
           value={format(endDate, "yyyy-MM-dd'T'HH:mm")}
-          onChange={(e) => setEndDate(new Date(e.target.value))}
+          onChange={e => setEndDate(new Date(e.target.value))}
           InputLabelProps={{ shrink: true }}
         />
       </Box>
 
-      <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
+      {/* Search bar */}
+      <Box sx={{ gridColumn: 'span 12', display: 'flex', gap: 2 }}>
         <TextField
           fullWidth
-          variant="outlined"
-          placeholder="Search by trace ID, span ID, name, service, or resource attributes..."
+          placeholder="Search by trace, span, name, service, or attr..."
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={e => setQuery(e.target.value)}
           onKeyPress={handleKeyPress}
           InputProps={{
             endAdornment: (
@@ -184,155 +193,143 @@ export const SearchPage = () => {
               </IconButton>
             ),
           }}
-          helperText="You can search through trace IDs, span IDs, names, services, and resource attribute keys/values"
         />
       </Box>
 
       {error && (
-        <Typography color="error" sx={{ mb: 2 }}>
-          {error}
-        </Typography>
+        <Box sx={{ gridColumn: 'span 12' }}>
+          <Typography color="error">{error}</Typography>
+        </Box>
       )}
 
-      {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
+      {loading && (
+        <Box sx={{ gridColumn: 'span 12', display: 'flex', justifyContent: 'center' }}>
           <CircularProgress />
         </Box>
-      ) : !searchResponse ? (
-        <Typography sx={{ mt: 2, textAlign: 'center' }}>
-          Enter a search query to begin
-        </Typography>
-      ) : searchResponse.results?.length === 0 ? (
-        <Typography sx={{ mt: 2, textAlign: 'center' }}>
-          No results found
-        </Typography>
-      ) : (
-        <>
-          <TableContainer component={Paper}>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Trace ID</TableCell>
-                  <TableCell>Span ID</TableCell>
-                  <TableCell>Name</TableCell>
-                  <TableCell>Service</TableCell>
-                  <TableCell>
-                    <Box
-                      sx={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}
-                      onClick={() => handleSortChange('duration')}
-                    >
-                      Duration {sortField === 'duration' && (sortOrder === 'asc' ? '↑' : '↓')}
-                    </Box>
-                  </TableCell>
-                  <TableCell>
-                    <Box
-                      sx={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}
-                      onClick={() => handleSortChange('start_time')}
-                    >
-                      Start Time {sortField === 'start_time' && (sortOrder === 'asc' ? '↑' : '↓')}
-                    </Box>
-                  </TableCell>
-                  <TableCell>
-                    <Box
-                      sx={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}
-                      onClick={() => handleSortChange('end_time')}
-                    >
-                      End Time {sortField === 'end_time' && (sortOrder === 'asc' ? '↑' : '↓')}
-                    </Box>
-                  </TableCell>
-                  <TableCell>Resource Attributes</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {searchResponse.results?.map((result) => {
-                  const rowId = `${result.TraceID}-${result.SpanID}`;
-                  const isExpanded = expandedRows.has(rowId);
-                  const hasAttributes = Object.keys(result.ResourceAttrs || {}).length > 0;
+      )}
 
-                  return (
-                    <React.Fragment key={rowId}>
-                      <TableRow
-                        onClick={() => navigate(`/traces/${encodeURIComponent(result.TraceID)}`)}
-                        sx={{ cursor: 'pointer', '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.04)' } }}
-                      >
-                        <TableCell>{result.TraceID}</TableCell>
-                        <TableCell>{result.SpanID}</TableCell>
-                        <TableCell>{result.Name}</TableCell>
-                        <TableCell>{result.Service}</TableCell>
-                        <TableCell>{formatDuration(result.Duration)}</TableCell>
-                        <TableCell>{formatTimestamp(result.StartTime)}</TableCell>
-                        <TableCell>{formatTimestamp(result.StartTime + result.Duration)}</TableCell>
-                        <TableCell>
-                          {hasAttributes && (
-                            <Button
-                              size="small"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleRow(rowId);
-                              }}
-                              endIcon={isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                            >
-                              {isExpanded ? 'Hide' : 'Show'} Attributes
-                            </Button>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                      {hasAttributes && (
-                        <TableRow>
-                          <TableCell colSpan={8} sx={{ p: 0 }}>
-                            <Collapse in={isExpanded} timeout="auto" unmountOnExit>
-                              <Box sx={{ p: 2, bgcolor: 'background.default' }}>
-                                <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                                  {Object.entries(result.ResourceAttrs || {}).map(([key, value]) => (
-                                    <Tooltip key={key} title={`${key}: ${value}`}>
-                                      <Chip
-                                        size="small"
-                                        label={`${key}: ${value}`}
-                                        icon={<InfoIcon />}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                        }}
-                                      />
-                                    </Tooltip>
-                                  ))}
-                                </Box>
-                              </Box>
-                            </Collapse>
+      {/* Percentile chart */}
+      {!loading && percentileSeries?.length > 0 && (
+        <Box sx={{ gridColumn: 'span 12' }}>
+          <PercentileChart data={percentileSeries} percentile={95} />
+        </Box>
+      )}
+
+      {/* Results table */}
+      {!loading && searchResponse && searchResponse.results?.length > 0 && (
+        <>
+          <Box sx={{ gridColumn: 'span 12' }}>
+            <TableContainer component={Paper}>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Trace ID</TableCell>
+                    <TableCell>Span ID</TableCell>
+                    <TableCell>Name</TableCell>
+                    <TableCell>Service</TableCell>
+                    <TableCell onClick={() => handleSortChange('duration')} sx={{ cursor: 'pointer' }}>
+                      Duration {sortField === 'duration' && (sortOrder === 'asc' ? '↑' : '↓')}
+                    </TableCell>
+                    <TableCell onClick={() => handleSortChange('start_time')} sx={{ cursor: 'pointer' }}>
+                      Start Time {sortField === 'start_time' && (sortOrder === 'asc' ? '↑' : '↓')}
+                    </TableCell>
+                    <TableCell onClick={() => handleSortChange('end_time')} sx={{ cursor: 'pointer' }}>
+                      End Time {sortField === 'end_time' && (sortOrder === 'asc' ? '↑' : '↓')}
+                    </TableCell>
+                    <TableCell>Attributes</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {searchResponse.results?.map(result => {
+                    const rowId = `${result.TraceID}-${result.SpanID}`;
+                    const isExpanded = expandedRows.has(rowId);
+                    const hasAttrs = Object.keys(result.ResourceAttrs).length > 0;
+                    return (
+                      <React.Fragment key={rowId}>
+                        <TableRow
+                          onClick={() => navigate(`/traces/${encodeURIComponent(result.TraceID)}`)}
+                          sx={{ cursor: 'pointer', '&:hover': { backgroundColor: 'rgba(0,0,0,0.04)' } }}
+                        >
+                          <TableCell>{result.TraceID}</TableCell>
+                          <TableCell>{result.SpanID}</TableCell>
+                          <TableCell>{result.Name}</TableCell>
+                          <TableCell>{result.Service}</TableCell>
+                          <TableCell>{formatDuration(result.Duration)}</TableCell>
+                          <TableCell>{formatTimestamp(result.StartTime)}</TableCell>
+                          <TableCell>
+                            {formatTimestamp(result.StartTime + result.Duration * 1e6)}
+                          </TableCell>
+                          <TableCell>
+                            {hasAttrs && (
+                              <Button
+                                size="small"
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  toggleRow(rowId);
+                                }}
+                                endIcon={isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                              >
+                                {isExpanded ? 'Hide' : 'Show'}
+                              </Button>
+                            )}
                           </TableCell>
                         </TableRow>
-                      )}
-                    </React.Fragment>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </TableContainer>
+                        {hasAttrs && (
+                          <TableRow>
+                            <TableCell colSpan={8} sx={{ p: 0 }}>
+                              <Collapse in={isExpanded} timeout="auto" unmountOnExit>
+                                <Box sx={{ p: 2, bgcolor: 'background.default' }}>
+                                  <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                                    {Object.entries(result.ResourceAttrs).map(([k, v]) => (
+                                      <Tooltip key={k} title={`${k}: ${v}`}>
+                                        <Chip
+                                          size="small"
+                                          label={`${k}: ${v}`}
+                                          icon={<InfoIcon />}
+                                          onClick={e => e.stopPropagation()}
+                                        />
+                                      </Tooltip>
+                                    ))}
+                                  </Box>
+                                </Box>
+                              </Collapse>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Box>
 
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 2 }}>
+          {/* Pagination controls */}
+          <Box
+            sx={{
+              gridColumn: 'span 12',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              mt: 2
+            }}
+          >
             <FormControl size="small" sx={{ minWidth: 120 }}>
               <InputLabel>Page Size</InputLabel>
-              <Select
-                value={pageSize}
-                label="Page Size"
-                onChange={handlePageSizeChange}
-              >
-                <MenuItem value={10}>10</MenuItem>
-                <MenuItem value={20}>20</MenuItem>
-                <MenuItem value={50}>50</MenuItem>
-                <MenuItem value={100}>100</MenuItem>
+              <Select value={pageSize} label="Page Size" onChange={handlePageSizeChange}>
+                {[10, 20, 50, 100].map(n => (
+                  <MenuItem key={n} value={n}>
+                    {n}
+                  </MenuItem>
+                ))}
               </Select>
             </FormControl>
-
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
               <Typography>
-                Showing {((page - 1) * pageSize) + 1} to {Math.min(page * pageSize, totalCount)} of {totalCount} results
+                Showing {(page - 1) * pageSize + 1} to{' '}
+                {Math.min(page * pageSize, totalCount)} of {totalCount} results
               </Typography>
-              <Pagination
-                count={totalPages}
-                page={page}
-                onChange={handlePageChange}
-                color="primary"
-              />
+              <Pagination count={totalPages} page={page} onChange={handlePageChange} />
             </Box>
           </Box>
         </>

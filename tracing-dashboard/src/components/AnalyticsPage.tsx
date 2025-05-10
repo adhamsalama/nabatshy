@@ -32,6 +32,7 @@ import {
   Pie,
   Cell,
 } from 'recharts';
+import PercentileChart from './PercentileChart';
 
 interface TimeRangeMetrics {
   timestamp: string;
@@ -269,28 +270,8 @@ const AnalyticsPage: React.FC = () => {
         </Box>
 
         <Box sx={{ gridColumn: 'span 12' }}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>P{P} Duration Over Time</Typography>
-              <Box height={300}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={percentileSeries}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="timestamp" tickFormatter={(v) => new Date(v).toLocaleString()} />
-                    <YAxis domain={[0, 'auto']} />
-                    <Tooltip
-                      labelFormatter={(v) => new Date(v).toLocaleString()}
-                      formatter={(val) => [`${val.toFixed(2)} ms`, `P${P}`]}
-                    />
-                    <Legend />
-                    <Line type="monotone" dataKey="value" name={`P${P} Duration (ms)`} stroke="#ff7300" />
-                  </LineChart>
-                </ResponsiveContainer>
-              </Box>
-            </CardContent>
-          </Card>
+          <PercentileChart data={percentileSeries ?? []} percentile={95} />
         </Box>
-
         <Box sx={{ gridColumn: { xs: 'span 12', md: 'span 6' } }}>
           <Card>
             <CardContent>

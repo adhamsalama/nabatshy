@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
+	clickhouseDriver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/doug-martin/goqu/v9"
 	coltrace "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
@@ -104,10 +105,11 @@ type SearchResult struct {
 }
 
 type SearchResponse struct {
-	Results    []SearchResult `json:"results"`
-	TotalCount uint64         `json:"totalCount"`
-	Page       int            `json:"page"`
-	PageSize   int            `json:"pageSize"`
+	Results           []SearchResult   `json:"results"`
+	TotalCount        uint64           `json:"totalCount"`
+	Page              int              `json:"page"`
+	PageSize          int              `json:"pageSize"`
+	PercentileResults []TimePercentile `json:"percentile"`
 }
 
 type SortOption struct {
@@ -643,33 +645,43 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 
 	// Then get paginated results
 	offset := (page - 1) * pageSize
-	ds := s.DB.
-		From(goqu.T("span").As("s1")).
-		Join(goqu.T("scope"), goqu.On(goqu.I("s1.scope_id").Eq(goqu.I("scope.scope_id")))).
-		Join(goqu.T("resource_attributes").As("ra"), goqu.On(goqu.I("scope.resource_id").Eq(goqu.I("ra.resource_id")))).
-		Select(
-			goqu.I("s1.trace_id"),
-			goqu.I("s1.span_id"),
-			goqu.I("s1.name"),
-			goqu.I("scope.name").As("service_name"),
-			goqu.L("s1.duration_ns / 1000000").As("duration_ms"),
-			goqu.I("s1.start_time_unix_nano"),
-			goqu.I("s1.end_time_unix_nano"),
-			goqu.I("s1.scope_id"),
-		).
-		Where(
-			goqu.Or(
-				goqu.I("s1.name").ILike("%"+query+"%"),
-				goqu.I("scope.name").ILike("%"+query+"%"),
-				goqu.I("s1.trace_id").ILike("%"+query+"%"),
-				goqu.I("s1.span_id").ILike("%"+query+"%"),
-				goqu.I("ra.key").ILike("%"+query+"%"),
-				goqu.I("ra.value").ILike("%"+query+"%"),
-			),
-			goqu.I("s1.start_time_unix_nano").Gte(startNano),
-			goqu.I("s1.end_time_unix_nano").Lte(endNano),
+	q := s.baseSpanDS(query, startNano, endNano)
+	ds := q.Select(
+		goqu.I("s1.trace_id"),
+		goqu.I("s1.span_id"),
+		goqu.I("s1.name"),
+		goqu.I("scope.name").As("service_name"),
+		goqu.L("s1.duration_ns / 1000000").As("duration_ms"),
+		goqu.I("s1.start_time_unix_nano"),
+		goqu.I("s1.end_time_unix_nano"),
+		goqu.I("s1.scope_id"),
+	)
+	queryString, _, _ := ds.ToSQL()
+	intervalSQL := getIntervalFromDateRange(dateRange)
+	pSeriesQuery := fmt.Sprintf(`
+		WITH stats as (
+			%s
 		)
-
+      SELECT
+            toStartOfInterval(
+                toDateTime(stats.start_time_unix_nano / 1e9),
+                INTERVAL %s
+            ) AS ts,
+            quantile(%f)(
+                (stats.end_time_unix_nano - stats.start_time_unix_nano) / 1000000
+            ) AS pvalue
+        FROM stats
+        GROUP BY ts
+        ORDER BY ts		`, queryString, intervalSQL, 0.95)
+	pRows, err := (*s.Ch).Query(ctx, pSeriesQuery)
+	if err != nil {
+		return nil, fmt.Errorf("query error: %w", err)
+	}
+	defer pRows.Close()
+	pResult, pErr := padQueryResult(pRows, intervalSQL, dateRange)
+	if pErr != nil {
+		panic(pErr)
+	}
 	// Apply sorting
 	switch sort.Field {
 	case "start_time":
@@ -751,10 +763,11 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 	}
 
 	return &SearchResponse{
-		Results:    results,
-		TotalCount: totalCount,
-		Page:       page,
-		PageSize:   pageSize,
+		Results:           results,
+		TotalCount:        totalCount,
+		Page:              page,
+		PageSize:          pageSize,
+		PercentileResults: pResult,
 	}, rows.Err()
 }
 
@@ -1082,6 +1095,10 @@ func (s *TelemetryService) GetPercentileSeries(
 	defer rows.Close()
 
 	// collect actual values
+	return padQueryResult(rows, intervalSQL, dateRange)
+}
+
+func padQueryResult(rows clickhouseDriver.Rows, intervalSQL string, dateRange DateRange) ([]TimePercentile, error) {
 	vals := make(map[time.Time]float64)
 	for rows.Next() {
 		var ts time.Time
@@ -1202,4 +1219,24 @@ func getIntervalFromDateRange(dateRange DateRange) string {
 		intervalSQL = "1 day"
 	}
 	return intervalSQL
+}
+
+// factor out your filtering/joining logic into one helper
+func (s *TelemetryService) baseSpanDS(query string, startNs, endNs int64) *goqu.SelectDataset {
+	return s.DB.
+		From(goqu.T("span").As("s1")).
+		Join(goqu.T("scope"), goqu.On(goqu.I("s1.scope_id").Eq(goqu.I("scope.scope_id")))).
+		Join(goqu.T("resource_attributes").As("ra"), goqu.On(goqu.I("scope.resource_id").Eq(goqu.I("ra.resource_id")))).
+		Where(
+			goqu.Or(
+				goqu.I("s1.name").ILike("%"+query+"%"),
+				goqu.I("scope.name").ILike("%"+query+"%"),
+				goqu.I("s1.trace_id").ILike("%"+query+"%"),
+				goqu.I("s1.span_id").ILike("%"+query+"%"),
+				goqu.I("ra.key").ILike("%"+query+"%"),
+				goqu.I("ra.value").ILike("%"+query+"%"),
+			),
+			goqu.I("s1.start_time_unix_nano").Gte(startNs),
+			goqu.I("s1.end_time_unix_nano").Lte(endNs),
+		)
 }
