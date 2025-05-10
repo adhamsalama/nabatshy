@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -766,61 +767,102 @@ func (s *TelemetryService) GetTraceCounts(
 	ctx context.Context,
 	dateRange DateRange,
 ) ([]TimeCount, error) {
-	const numBuckets = 10
-
 	startNano := dateRange.Start.UnixNano()
 	endNano := dateRange.End.UnixNano()
-	startStr := strconv.FormatInt(startNano, 10)
-	endStr := strconv.FormatInt(endNano, 10)
-
 	timeFilter := fmt.Sprintf(
-		"start_time_unix_nano >= %s AND start_time_unix_nano <= %s",
-		startStr, endStr,
+		"start_time_unix_nano >= %d AND start_time_unix_nano <= %d",
+		startNano, endNano,
 	)
-
 	intervalSQL := getIntervalFromDateRange(dateRange)
 
 	query := fmt.Sprintf(`
-		SELECT
-			toStartOfInterval(
-				fromUnixTimestamp64Nano(start_time_unix_nano),
-				INTERVAL %s
-			) AS ts,
-			count() AS cnt
-		FROM span
-		WHERE %s
-		GROUP BY ts
-		ORDER BY ts ASC
-		LIMIT %d
-	`, intervalSQL, timeFilter, numBuckets)
-	fmt.Println(query)
+        SELECT
+            toStartOfInterval(
+                fromUnixTimestamp64Nano(start_time_unix_nano),
+                INTERVAL %s
+            ) AS ts,
+            count() AS cnt
+        FROM span
+        WHERE %s
+        GROUP BY ts
+        ORDER BY ts ASC
+    `, intervalSQL, timeFilter)
+
 	rows, err := (*s.Ch).Query(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("query error: %w", err)
 	}
 	defer rows.Close()
 
-	raw := make(map[time.Time]uint64, numBuckets)
+	// collect actual counts
+	counts := make(map[time.Time]uint64)
 	for rows.Next() {
 		var ts time.Time
 		var cnt uint64
 		if err := rows.Scan(&ts, &cnt); err != nil {
 			return nil, fmt.Errorf("scan error: %w", err)
 		}
-		raw[ts] = cnt
+		counts[ts] = cnt
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("rows error: %w", err)
 	}
 
-	result := make([]TimeCount, 0, numBuckets)
-	for i, j := range raw {
+	// get duration for stepping
+	intervalDur, err := parseInterval(intervalSQL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid interval: %w", err)
+	}
+
+	// align the start timestamp to ClickHouse buckets
+	alignedStart := alignToInterval(dateRange.Start, intervalDur)
+
+	// iterate through every bucket, filling zeros if missing
+	var result []TimeCount
+	for ts := alignedStart; !ts.After(dateRange.End); ts = ts.Add(intervalDur) {
 		result = append(result, TimeCount{
-			Timestamp: i,
-			Value:     j,
+			Timestamp: ts,
+			Value:     counts[ts],
 		})
 	}
+
 	return result, nil
+}
+
+// parseInterval turns "1 minute", "1 hour", etc. into time.Duration
+func parseInterval(interval string) (time.Duration, error) {
+	parts := strings.Fields(interval)
+	if len(parts) != 2 {
+		return 0, fmt.Errorf("invalid interval format: %q", interval)
+	}
+
+	n, err := strconv.Atoi(parts[0])
+	if err != nil || n <= 0 {
+		return 0, fmt.Errorf("invalid interval count: %q", parts[0])
+	}
+
+	unit := strings.ToLower(parts[1])
+	switch unit {
+	case "second", "seconds":
+		return time.Duration(n) * time.Second, nil
+	case "minute", "minutes":
+		return time.Duration(n) * time.Minute, nil
+	case "hour", "hours":
+		return time.Duration(n) * time.Hour, nil
+	case "day", "days":
+		return time.Duration(n) * 24 * time.Hour, nil
+	default:
+		return 0, fmt.Errorf("unsupported interval unit: %q", unit)
+	}
+}
+
+// alignToInterval truncates t down to the nearest multiple of interval,
+// matching ClickHouse toStartOfInterval behavior.
+func alignToInterval(t time.Time, interval time.Duration) time.Time {
+	secs := int64(interval.Seconds())
+	unix := t.Unix()
+	alignedUnix := unix - (unix % secs)
+	return time.Unix(alignedUnix, 0).UTC()
 }
 
 func (s *TelemetryService) GetServiceMetrics(ctx context.Context, timeRange string, start, end *time.Time) ([]ServiceMetrics, error) {
@@ -1098,7 +1140,7 @@ func getIntervalFromDateRange(dateRange DateRange) string {
 	case totalDur < time.Minute:
 		intervalSQL = "1 second"
 	case totalDur >= time.Minute && totalDur <= time.Hour*4:
-		intervalSQL = "1 minute"
+		intervalSQL = "5 minute"
 	case totalDur >= time.Hour && totalDur <= day:
 		intervalSQL = "1 hour"
 	case totalDur >= day && totalDur <= month:
