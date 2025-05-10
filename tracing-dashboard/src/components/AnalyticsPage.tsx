@@ -33,13 +33,9 @@ import {
   Cell,
 } from 'recharts';
 import PercentileChart from './PercentileChart';
+import TraceCountChart from './TraceCountChart';
 
-interface TimeRangeMetrics {
-  timestamp: string;
-  count: number;
-  avg_duration_ms: number;
-  error_rate: number;
-}
+
 
 interface ServiceMetrics {
   service: string;
@@ -61,7 +57,7 @@ const AnalyticsPage: React.FC = () => {
   const [timeRange, setTimeRange] = useState('24h');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [traceMetrics, setTraceMetrics] = useState<TimeRangeMetrics[]>([]);
+  const [traceMetrics, setTraceMetrics] = useState<GraphData[]>([]);
   const [serviceMetrics, setServiceMetrics] = useState<ServiceMetrics[]>([]);
   const [avgMetrics, setAvgMetrics] = useState<GraphData[]>([]);
   const [percentileSeries, setPercentileSeries] = useState<PercentilePoint[]>([]);
@@ -227,23 +223,7 @@ const AnalyticsPage: React.FC = () => {
 
       <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 3 }}>
         <Box sx={{ gridColumn: 'span 12' }}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>Trace Count Over Time</Typography>
-              <Box height={300}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={traceMetrics}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="timestamp" tickFormatter={(v) => new Date(v).toLocaleString()} />
-                    <YAxis domain={[0, 'auto']} />
-                    <Tooltip labelFormatter={(v) => new Date(v).toLocaleString()} />
-                    <Legend />
-                    <Line type="monotone" dataKey="value" name="Trace Count" stroke="#8884d8" />
-                  </LineChart>
-                </ResponsiveContainer>
-              </Box>
-            </CardContent>
-          </Card>
+          <TraceCountChart data={traceMetrics} />
         </Box>
 
         <Box sx={{ gridColumn: 'span 12' }}>
