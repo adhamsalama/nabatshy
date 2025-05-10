@@ -20,11 +20,6 @@ import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
   Tooltip,
   Legend,
   ResponsiveContainer,
@@ -34,6 +29,7 @@ import {
 } from 'recharts';
 import PercentileChart from './PercentileChart';
 import TraceCountChart from './TraceCountChart';
+import AvgDurationChart from './AvgDurationChart';
 
 
 
@@ -53,6 +49,7 @@ interface PercentilePoint extends GraphData { }
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
 
+
 const AnalyticsPage: React.FC = () => {
   const [timeRange, setTimeRange] = useState('24h');
   const [loading, setLoading] = useState(true);
@@ -71,7 +68,6 @@ const AnalyticsPage: React.FC = () => {
   const P = 95;
   const BUCKETS = 10;
 
-
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const range = params.get('timeRange') || '24h';
@@ -88,6 +84,7 @@ const AnalyticsPage: React.FC = () => {
     }
     setTimeRange(range);
   }, []);
+
   const fetchMetrics = async () => {
     setLoading(true);
     setError(null);
@@ -227,31 +224,13 @@ const AnalyticsPage: React.FC = () => {
         </Box>
 
         <Box sx={{ gridColumn: 'span 12' }}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>Avg Duration Over Time</Typography>
-              <Box height={300}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={avgMetrics}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="timestamp" tickFormatter={(v) => new Date(v).toLocaleString()} />
-                    <YAxis domain={[0, 'auto']} />
-                    <Tooltip
-                      labelFormatter={(v) => new Date(v).toLocaleString()}
-                      formatter={(value: number) => value.toFixed(2)}
-                    />
-                    <Legend />
-                    <Line type="monotone" dataKey="value" name="Avg Duration (ms)" stroke="#82ca9d" />
-                  </LineChart>
-                </ResponsiveContainer>
-              </Box>
-            </CardContent>
-          </Card>
+          <AvgDurationChart data={avgMetrics} />
         </Box>
 
         <Box sx={{ gridColumn: 'span 12' }}>
           <PercentileChart data={percentileSeries ?? []} percentile={95} />
         </Box>
+
         <Box sx={{ gridColumn: { xs: 'span 12', md: 'span 6' } }}>
           <Card>
             <CardContent>

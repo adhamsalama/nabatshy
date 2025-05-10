@@ -105,12 +105,13 @@ type SearchResult struct {
 }
 
 type SearchResponse struct {
-	Results           []SearchResult   `json:"results"`
-	TotalCount        uint64           `json:"totalCount"`
-	Page              int              `json:"page"`
-	PageSize          int              `json:"pageSize"`
-	PercentileResults []TimePercentile `json:"percentile"`
-	TraceCountResults []TimePercentile `json:"traceCount"`
+	Results            []SearchResult   `json:"results"`
+	TotalCount         uint64           `json:"totalCount"`
+	Page               int              `json:"page"`
+	PageSize           int              `json:"pageSize"`
+	PercentileResults  []TimePercentile `json:"percentile"`
+	TraceCountResults  []TimePercentile `json:"traceCount"`
+	AvgDurationResults []TimePercentile `json:"avgDuration"`
 }
 
 type SortOption struct {
@@ -667,6 +668,10 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 	if tcErr != nil {
 		panic(tcErr)
 	}
+	avgResult, avgErr := s.getAverageDurationForQuery(ctx, queryString, intervalSQL, dateRange)
+	if avgErr != nil {
+		panic(avgErr)
+	}
 	// Apply sorting
 	switch sort.Field {
 	case "start_time":
@@ -748,12 +753,13 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 	}
 
 	return &SearchResponse{
-		Results:           results,
-		TotalCount:        totalCount,
-		Page:              page,
-		PageSize:          pageSize,
-		PercentileResults: pResult,
-		TraceCountResults: tcResult,
+		Results:            results,
+		TotalCount:         totalCount,
+		Page:               page,
+		PageSize:           pageSize,
+		PercentileResults:  pResult,
+		TraceCountResults:  tcResult,
+		AvgDurationResults: avgResult,
 	}, rows.Err()
 }
 
@@ -1289,4 +1295,40 @@ func (s *TelemetryService) getTraceCountForQuery(
 		panic(padErr)
 	}
 	return cResult, nil
+}
+
+func (s *TelemetryService) getAverageDurationForQuery(
+	ctx context.Context,
+	queryString string,
+	intervalSQL string,
+	dateRange DateRange,
+) ([]TimePercentile, error) {
+	avgSeriesQuery := fmt.Sprintf(`
+		WITH stats AS (
+			%s
+		)
+		SELECT
+			toStartOfInterval(
+				toDateTime(stats.start_time_unix_nano / 1e9),
+				INTERVAL %s
+			) AS ts,
+			avg(
+				(stats.end_time_unix_nano - stats.start_time_unix_nano) / 1000000
+			) AS pvalue
+		FROM stats
+		GROUP BY ts
+		ORDER BY ts
+	`, queryString, intervalSQL)
+
+	rows, err := (*s.Ch).Query(ctx, avgSeriesQuery)
+	if err != nil {
+		return nil, fmt.Errorf("query error: %w", err)
+	}
+	defer rows.Close()
+
+	result, padErr := padQueryResult(rows, intervalSQL, dateRange)
+	if padErr != nil {
+		return nil, fmt.Errorf("pad error: %w", padErr)
+	}
+	return result, nil
 }

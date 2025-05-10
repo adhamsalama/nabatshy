@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import {
   Box,
@@ -32,6 +31,7 @@ import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import { format } from 'date-fns';
 import PercentileChart from './PercentileChart';
 import TraceCountChart from './TraceCountChart';
+import AvgDurationChart from './AvgDurationChart';
 
 interface SearchResult {
   TraceID: string;
@@ -55,6 +55,7 @@ interface SearchResponse {
   pageSize: number;
   percentile: TimePercentile[];
   traceCount: TimePercentile[];
+  avgDuration: TimePercentile[];
 }
 
 export const SearchPage: React.FC = () => {
@@ -62,6 +63,7 @@ export const SearchPage: React.FC = () => {
   const [searchResponse, setSearchResponse] = useState<SearchResponse | null>(null);
   const [percentileSeries, setPercentileSeries] = useState<TimePercentile[]>([]);
   const [traceCountSeries, setTraceCountSeries] = useState<TimePercentile[]>([]);
+  const [avgDurationSeries, setAvgDurationSeries] = useState<TimePercentile[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
@@ -97,6 +99,7 @@ export const SearchPage: React.FC = () => {
       setSearchResponse(data);
       setPercentileSeries(data.percentile);
       setTraceCountSeries(data.traceCount);
+      setAvgDurationSeries(data.avgDuration);
       setPage(pageNum);
       setTotalCount(data.totalCount || 0);
     } catch (err) {
@@ -104,6 +107,7 @@ export const SearchPage: React.FC = () => {
       setSearchResponse(null);
       setPercentileSeries([]);
       setTraceCountSeries([]);
+      setAvgDurationSeries([]);
       setTotalCount(0);
     } finally {
       setLoading(false);
@@ -224,7 +228,12 @@ export const SearchPage: React.FC = () => {
         </Box>
       )}
 
-      {/* Results table */}
+      {!loading && avgDurationSeries.length > 0 && (
+        <Box sx={{ gridColumn: 'span 12' }}>
+          <AvgDurationChart data={avgDurationSeries} />
+        </Box>
+      )}
+
       {!loading && searchResponse && searchResponse.results?.length > 0 && (
         <>
           <Box sx={{ gridColumn: 'span 12' }}>
@@ -249,7 +258,7 @@ export const SearchPage: React.FC = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {searchResponse.results?.map((result, i) => {
+                  {searchResponse.results.map((result, i) => {
                     const rowId = `${result.TraceID}-${result.SpanID}-${i}`;
                     const isExpanded = expandedRows.has(rowId);
                     const hasAttrs = Object.keys(result.ResourceAttrs).length > 0;
@@ -313,7 +322,6 @@ export const SearchPage: React.FC = () => {
             </TableContainer>
           </Box>
 
-          {/* Pagination controls */}
           <Box
             sx={{
               gridColumn: 'span 12',
@@ -342,7 +350,8 @@ export const SearchPage: React.FC = () => {
             </Box>
           </Box>
         </>
-      )}    </Box>
+      )}
+    </Box>
   );
 };
 
