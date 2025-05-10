@@ -31,8 +31,6 @@ import {
   PieChart,
   Pie,
   Cell,
-  BarChart,
-  Bar,
 } from 'recharts';
 
 interface TimeRangeMetrics {
@@ -49,19 +47,12 @@ interface ServiceMetrics {
   error_rate: number;
 }
 
-interface EndpointMetrics {
-  endpoint: string;
-  count: number;
-  avg_duration_ms: number;
-  p95_duration_ms: number;
-}
 interface GraphData {
   timestamp: string;
   value: number;
 }
-// Series point for p-percentile
-interface PercentilePoint extends GraphData {
-}
+
+interface PercentilePoint extends GraphData { }
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
 
@@ -74,16 +65,32 @@ const AnalyticsPage: React.FC = () => {
   const [avgMetrics, setAvgMetrics] = useState<GraphData[]>([]);
   const [percentileSeries, setPercentileSeries] = useState<PercentilePoint[]>([]);
 
-  // Customize percentile and bucket count
-  const P = 95;
-  const BUCKETS = 10;
-
   const [customDateDialogOpen, setCustomDateDialogOpen] = useState(false);
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
   const [tempStartDate, setTempStartDate] = useState<Date | null>(null);
   const [tempEndDate, setTempEndDate] = useState<Date | null>(null);
 
+  const P = 95;
+  const BUCKETS = 10;
+
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const range = params.get('timeRange') || '24h';
+    const start = params.get('start');
+    const end = params.get('end');
+
+    if (range === 'custom' && start && end) {
+      const sDate = new Date(start);
+      const eDate = new Date(end);
+      if (!isNaN(sDate.getTime()) && !isNaN(eDate.getTime())) {
+        setStartDate(sDate);
+        setEndDate(eDate);
+      }
+    }
+    setTimeRange(range);
+  }, []);
   const fetchMetrics = async () => {
     setLoading(true);
     setError(null);
@@ -111,13 +118,11 @@ const AnalyticsPage: React.FC = () => {
       setServiceMetrics(Array.isArray(serviceResponse) ? serviceResponse : []);
       setAvgMetrics(Array.isArray(avgResponse) ? avgResponse : []);
 
-      // Fetch percentile series
       const sep = params.includes('?') ? '&' : '?';
       const seriesResponse = await fetch(
         `${baseUrl}/pseries${params}${sep}percentile=${P}&buckets=${BUCKETS}`
       ).then(res => res.json());
       setPercentileSeries(Array.isArray(seriesResponse) ? seriesResponse : []);
-
     } catch (err) {
       console.error('Error fetching metrics:', err);
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -131,7 +136,7 @@ const AnalyticsPage: React.FC = () => {
   };
 
   useEffect(() => {
-    if (timeRange === 'custom' && !startDate && !endDate) return;
+    if (timeRange === 'custom' && (!startDate || !endDate)) return;
     fetchMetrics();
   }, [timeRange, startDate, endDate]);
 
@@ -220,7 +225,6 @@ const AnalyticsPage: React.FC = () => {
       </Dialog>
 
       <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 3 }}>
-        {/* Trace Count Chart */}
         <Box sx={{ gridColumn: 'span 12' }}>
           <Card>
             <CardContent>
@@ -241,7 +245,6 @@ const AnalyticsPage: React.FC = () => {
           </Card>
         </Box>
 
-        {/* Avg Duration Chart */}
         <Box sx={{ gridColumn: 'span 12' }}>
           <Card>
             <CardContent>
@@ -252,7 +255,8 @@ const AnalyticsPage: React.FC = () => {
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="timestamp" tickFormatter={(v) => new Date(v).toLocaleString()} />
                     <YAxis domain={[0, 'auto']} />
-                    <Tooltip labelFormatter={(v) => new Date(v).toLocaleString()}
+                    <Tooltip
+                      labelFormatter={(v) => new Date(v).toLocaleString()}
                       formatter={(value: number) => value.toFixed(2)}
                     />
                     <Legend />
@@ -264,7 +268,6 @@ const AnalyticsPage: React.FC = () => {
           </Card>
         </Box>
 
-        {/* P95 Series Chart */}
         <Box sx={{ gridColumn: 'span 12' }}>
           <Card>
             <CardContent>
@@ -275,7 +278,10 @@ const AnalyticsPage: React.FC = () => {
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="timestamp" tickFormatter={(v) => new Date(v).toLocaleString()} />
                     <YAxis domain={[0, 'auto']} />
-                    <Tooltip labelFormatter={(v) => new Date(v).toLocaleString()} formatter={(val) => [`${val.toFixed(2)} ms`, `P${P}`]} />
+                    <Tooltip
+                      labelFormatter={(v) => new Date(v).toLocaleString()}
+                      formatter={(val) => [`${val.toFixed(2)} ms`, `P${P}`]}
+                    />
                     <Legend />
                     <Line type="monotone" dataKey="value" name={`P${P} Duration (ms)`} stroke="#ff7300" />
                   </LineChart>
@@ -285,7 +291,6 @@ const AnalyticsPage: React.FC = () => {
           </Card>
         </Box>
 
-        {/* Service Distribution Chart */}
         <Box sx={{ gridColumn: { xs: 'span 12', md: 'span 6' } }}>
           <Card>
             <CardContent>
@@ -294,7 +299,9 @@ const AnalyticsPage: React.FC = () => {
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie data={serviceMetrics} dataKey="count" nameKey="service" cx="50%" cy="50%" outerRadius={150} label>
-                      {serviceMetrics.map((entry, index) => (<Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />))}
+                      {serviceMetrics.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
                     </Pie>
                     <Tooltip />
                     <Legend />
@@ -304,8 +311,6 @@ const AnalyticsPage: React.FC = () => {
             </CardContent>
           </Card>
         </Box>
-
-        {/* ... other charts unchanged ... */}
       </Box>
     </Box>
   );

@@ -527,12 +527,6 @@ func (c *TelemetryController) getPMetrics(w http.ResponseWriter, r *http.Request
 			pct = v
 		}
 	}
-	buckets := 10
-	if bs := q.Get("buckets"); bs != "" {
-		if v, err := strconv.Atoi(bs); err == nil {
-			buckets = v
-		}
-	}
 
 	var dr DateRange
 	if startStr, endStr := q.Get("start"), q.Get("end"); startStr != "" && endStr != "" {
@@ -547,7 +541,7 @@ func (c *TelemetryController) getPMetrics(w http.ResponseWriter, r *http.Request
 		dr = getDateRangeFromQuery(q.Get("timeRange"))
 	}
 
-	series, err := c.service.GetPercentileSeries(r.Context(), dr, pct, buckets)
+	series, err := c.service.GetPercentileSeries(r.Context(), dr, pct)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to get p%d series: %v", pct, err), http.StatusInternalServerError)
 		return

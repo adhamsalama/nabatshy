@@ -1041,8 +1041,8 @@ func (s *TelemetryService) GetPercentileSeries(
 	ctx context.Context,
 	dateRange DateRange,
 	percentile int,
-	buckets int,
 ) ([]TimePercentile, error) {
+	// clamp percentile
 	if percentile < 0 {
 		percentile = 0
 	}
@@ -1053,40 +1053,64 @@ func (s *TelemetryService) GetPercentileSeries(
 
 	startNs := dateRange.Start.UnixNano()
 	endNs := dateRange.End.UnixNano()
-	totalNs := endNs - startNs
-	if totalNs <= 0 || buckets <= 0 {
-		return nil, fmt.Errorf("invalid range or buckets")
+	if endNs <= startNs {
+		return nil, fmt.Errorf("invalid date range")
 	}
 
 	intervalSQL := getIntervalFromDateRange(dateRange)
 
 	query := fmt.Sprintf(`
         SELECT
- 			   	toStartOfInterval(toDateTime(start_time_unix_nano / 1e9), interval %s) time_bucket,
-  				quantile(%f)((end_time_unix_nano - start_time_unix_nano)/ 1000000) AS pvalue
-				FROM span
-				WHERE start_time_unix_nano >= %d  and end_time_unix_nano <= %d
-				GROUP BY time_bucket
-				ORDER BY time_bucket
-  	`, intervalSQL, q, startNs, endNs)
+            toStartOfInterval(
+                toDateTime(start_time_unix_nano / 1e9),
+                INTERVAL %s
+            ) AS ts,
+            quantile(%f)(
+                (end_time_unix_nano - start_time_unix_nano) / 1000000
+            ) AS pvalue
+        FROM span
+        WHERE start_time_unix_nano >= %d
+          AND end_time_unix_nano   <= %d
+        GROUP BY ts
+        ORDER BY ts
+    `, intervalSQL, q, startNs, endNs)
 
-	fmt.Printf("%v\n", query)
 	rows, err := (*s.Ch).Query(ctx, query)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	series := make([]TimePercentile, 0)
+	// collect actual values
+	vals := make(map[time.Time]float64)
 	for rows.Next() {
-		thisValue := TimePercentile{}
-		if err := rows.Scan(&thisValue.Timestamp, &thisValue.Value); err != nil {
+		var ts time.Time
+		var v float64
+		if err := rows.Scan(&ts, &v); err != nil {
 			return nil, err
 		}
-		series = append(series, thisValue)
+		vals[ts] = v
 	}
-	if rows.Err() != nil {
-		return nil, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// determine step duration
+	step, err := parseInterval(intervalSQL)
+	if err != nil {
+		return nil, err
+	}
+
+	// align start to ClickHouse buckets
+	aligned := alignToInterval(dateRange.Start, step)
+
+	// build padded series
+	var series []TimePercentile
+	for ts := aligned; !ts.After(dateRange.End); ts = ts.Add(step) {
+		series = append(series, TimePercentile{
+			Timestamp: ts,
+			Value:     vals[ts], // zero if missing
+		})
 	}
 	return series, nil
 }
@@ -1097,36 +1121,63 @@ func (s *TelemetryService) GetAvgDuration(
 ) ([]TimePercentile, error) {
 	startNs := dateRange.Start.UnixNano()
 	endNs := dateRange.End.UnixNano()
+	if endNs <= startNs {
+		return nil, fmt.Errorf("invalid date range")
+	}
 
 	intervalSQL := getIntervalFromDateRange(dateRange)
 
+	// run ClickHouse query
 	query := fmt.Sprintf(`
         SELECT
- 			   	toStartOfInterval(toDateTime(start_time_unix_nano / 1e9), interval %s) time_bucket,
-  				avg((end_time_unix_nano - start_time_unix_nano)/ 1000000) AS pvalue
-				FROM span
-				WHERE start_time_unix_nano >= %d  and end_time_unix_nano <= %d
-				GROUP BY time_bucket
-				ORDER BY time_bucket
-  	`, intervalSQL, startNs, endNs)
+            toStartOfInterval(
+                toDateTime(start_time_unix_nano / 1e9),
+                INTERVAL %s
+            ) AS ts,
+            avg((end_time_unix_nano - start_time_unix_nano) / 1000000) AS pvalue
+        FROM span
+        WHERE start_time_unix_nano >= %d
+          AND end_time_unix_nano   <= %d
+        GROUP BY ts
+        ORDER BY ts
+    `, intervalSQL, startNs, endNs)
 
-	fmt.Printf("%v\n", query)
 	rows, err := (*s.Ch).Query(ctx, query)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	series := make([]TimePercentile, 0)
+	// collect actual averages
+	vals := make(map[time.Time]float64)
 	for rows.Next() {
-		thisValue := TimePercentile{}
-		if err := rows.Scan(&thisValue.Timestamp, &thisValue.Value); err != nil {
+		var ts time.Time
+		var v float64
+		if err := rows.Scan(&ts, &v); err != nil {
 			return nil, err
 		}
-		series = append(series, thisValue)
+		vals[ts] = v
 	}
-	if rows.Err() != nil {
-		return nil, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// determine step duration
+	step, err := parseInterval(intervalSQL)
+	if err != nil {
+		return nil, err
+	}
+
+	// align start to ClickHouse buckets
+	aligned := alignToInterval(dateRange.Start, step)
+
+	// build padded series
+	var series []TimePercentile
+	for ts := aligned; !ts.After(dateRange.End); ts = ts.Add(step) {
+		series = append(series, TimePercentile{
+			Timestamp: ts,
+			Value:     vals[ts], // zero if missing
+		})
 	}
 	return series, nil
 }
@@ -1143,6 +1194,8 @@ func getIntervalFromDateRange(dateRange DateRange) string {
 		intervalSQL = "5 minute"
 	case totalDur >= time.Hour && totalDur <= day:
 		intervalSQL = "1 hour"
+	case totalDur >= time.Hour && totalDur <= day*4:
+		intervalSQL = "2 hour"
 	case totalDur >= day && totalDur <= month:
 		intervalSQL = "1 day"
 	default:
