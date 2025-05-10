@@ -658,27 +658,7 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 	)
 	queryString, _, _ := ds.ToSQL()
 	intervalSQL := getIntervalFromDateRange(dateRange)
-	pSeriesQuery := fmt.Sprintf(`
-		WITH stats as (
-			%s
-		)
-      SELECT
-            toStartOfInterval(
-                toDateTime(stats.start_time_unix_nano / 1e9),
-                INTERVAL %s
-            ) AS ts,
-            quantile(%f)(
-                (stats.end_time_unix_nano - stats.start_time_unix_nano) / 1000000
-            ) AS pvalue
-        FROM stats
-        GROUP BY ts
-        ORDER BY ts		`, queryString, intervalSQL, 0.95)
-	pRows, err := (*s.Ch).Query(ctx, pSeriesQuery)
-	if err != nil {
-		return nil, fmt.Errorf("query error: %w", err)
-	}
-	defer pRows.Close()
-	pResult, pErr := padQueryResult(pRows, intervalSQL, dateRange)
+	pResult, pErr := s.getPercentileForQuery(ctx, queryString, intervalSQL, dateRange)
 	if pErr != nil {
 		panic(pErr)
 	}
@@ -769,6 +749,34 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 		PageSize:          pageSize,
 		PercentileResults: pResult,
 	}, rows.Err()
+}
+
+func (s *TelemetryService) getPercentileForQuery(ctx context.Context, queryString string, intervalSQL string, dateRange DateRange) ([]TimePercentile, error) {
+	pSeriesQuery := fmt.Sprintf(`
+		WITH stats as (
+			%s
+		)
+      SELECT
+            toStartOfInterval(
+                toDateTime(stats.start_time_unix_nano / 1e9),
+                INTERVAL %s
+            ) AS ts,
+            quantile(%f)(
+                (stats.end_time_unix_nano - stats.start_time_unix_nano) / 1000000
+            ) AS pvalue
+        FROM stats
+        GROUP BY ts
+        ORDER BY ts		`, queryString, intervalSQL, 0.95)
+	pRows, err := (*s.Ch).Query(ctx, pSeriesQuery)
+	if err != nil {
+		return nil, fmt.Errorf("query error: %w", err)
+	}
+	defer pRows.Close()
+	pResult, pErr := padQueryResult(pRows, intervalSQL, dateRange)
+	if pErr != nil {
+		panic(pErr)
+	}
+	return pResult, nil
 }
 
 type TimeCount struct {
