@@ -268,10 +268,11 @@ export const SearchPage: React.FC = () => {
                     return (
                       <React.Fragment key={rowId}>
                         <TableRow
-                          onClick={() => navigate(`/traces/${encodeURIComponent(result.TraceID)}`)}
+                          onClick={() =>
+                            window.open(`/traces/${encodeURIComponent(result.TraceID)}`, '_blank', 'noopener,noreferrer')
+                          }
                           sx={{ cursor: 'pointer', '&:hover': { backgroundColor: 'rgba(0,0,0,0.04)' } }}
-                        >
-                          <TableCell>{result.TraceID}</TableCell>
+                        >                          <TableCell>{result.TraceID}</TableCell>
                           <TableCell>{result.SpanID}</TableCell>
                           <TableCell>{result.Name}</TableCell>
                           <TableCell>{result.Service}</TableCell>
@@ -285,7 +286,7 @@ export const SearchPage: React.FC = () => {
                               <Button
                                 size="small"
                                 onClick={e => {
-                                  e.stopPropagation();
+                                  e.stopPropagation(); // Prevents row click
                                   toggleRow(rowId);
                                 }}
                                 endIcon={isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
@@ -294,6 +295,7 @@ export const SearchPage: React.FC = () => {
                               </Button>
                             )}
                           </TableCell>
+
                         </TableRow>
                         {hasAttrs && (
                           <TableRow>
