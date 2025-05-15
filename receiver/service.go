@@ -613,7 +613,7 @@ func (s *TelemetryService) GetTraceList(ctx context.Context) ([]TraceList, error
 	return traces, rows.Err()
 }
 
-func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange, query string, page, pageSize int, sort SortOption) (*SearchResponse, error) {
+func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange, query string, page, pageSize int, sort SortOption, percentile int) (*SearchResponse, error) {
 	startNano := dateRange.Start.UnixNano()
 	endNano := dateRange.End.UnixNano()
 	countDS := s.DB.
@@ -660,7 +660,7 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 	)
 	queryString, _, _ := ds.ToSQL()
 	intervalSQL := getIntervalFromDateRange(dateRange)
-	pResult, pErr := s.getPercentileForQuery(ctx, queryString, intervalSQL, dateRange)
+	pResult, pErr := s.getPercentileForQuery(ctx, queryString, intervalSQL, dateRange, percentile)
 	if pErr != nil {
 		panic(pErr)
 	}
@@ -763,7 +763,9 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 	}, rows.Err()
 }
 
-func (s *TelemetryService) getPercentileForQuery(ctx context.Context, queryString string, intervalSQL string, dateRange DateRange) ([]TimePercentile, error) {
+func (s *TelemetryService) getPercentileForQuery(ctx context.Context, queryString string, intervalSQL string, dateRange DateRange, percentile int) ([]TimePercentile, error) {
+	pFloat := float64(percentile) / 100.0
+
 	pSeriesQuery := fmt.Sprintf(`
 		WITH stats as (
 			%s
@@ -778,7 +780,7 @@ func (s *TelemetryService) getPercentileForQuery(ctx context.Context, queryStrin
             ) AS pvalue
         FROM stats
         GROUP BY ts
-        ORDER BY ts		`, queryString, intervalSQL, 0.95)
+        ORDER BY ts		`, queryString, intervalSQL, pFloat)
 	pRows, err := (*s.Ch).Query(ctx, pSeriesQuery)
 	if err != nil {
 		return nil, fmt.Errorf("query error: %w", err)

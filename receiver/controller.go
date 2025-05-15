@@ -345,7 +345,14 @@ func (c *TelemetryController) formatOldOTELData(
 
 func (c *TelemetryController) searchTraces(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query().Get("query")
-
+	percentileStr := r.URL.Query().Get("percentile")
+	percentile := 95
+	if percentileStr != "" {
+		p, err := strconv.Atoi(percentileStr)
+		if err != nil {
+			percentile = p
+		}
+	}
 	page, err := strconv.Atoi(r.URL.Query().Get("page"))
 	if err != nil || page < 1 {
 		page = 1
@@ -383,7 +390,7 @@ func (c *TelemetryController) searchTraces(w http.ResponseWriter, r *http.Reques
 		timeRange := r.URL.Query().Get("timeRange")
 		dateRange = getDateRangeFromQuery(timeRange)
 	}
-	results, err := c.service.SearchTraces(r.Context(), dateRange, query, page, pageSize, sort)
+	results, err := c.service.SearchTraces(r.Context(), dateRange, query, page, pageSize, sort, percentile)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to search traces: %v", err), http.StatusInternalServerError)
 		return
