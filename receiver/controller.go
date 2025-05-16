@@ -218,7 +218,6 @@ func (c *TelemetryController) formatOldOTELData(
 	data []byte,
 	req *coltrace.ExportTraceServiceRequest,
 ) error {
-	fmt.Println("formatting old otel data\n*************************************************************\n")
 	var top map[string]any
 	if err := json.Unmarshal(data, &top); err != nil {
 		return err
