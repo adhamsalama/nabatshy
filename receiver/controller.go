@@ -349,7 +349,7 @@ func (c *TelemetryController) searchTraces(w http.ResponseWriter, r *http.Reques
 	percentile := 95
 	if percentileStr != "" {
 		p, err := strconv.Atoi(percentileStr)
-		if err != nil {
+		if err == nil {
 			percentile = p
 		}
 	}
