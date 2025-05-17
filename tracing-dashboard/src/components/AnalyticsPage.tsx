@@ -89,7 +89,7 @@ const AnalyticsPage: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const baseUrl = `${config.backendDomain}/api/metrics`;
+      const baseUrl = `${config.backendUrl}/api/metrics`;
       let params = '';
 
       if (timeRange === 'custom' && startDate && endDate) {
