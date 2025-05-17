@@ -76,24 +76,8 @@ func AlignToInterval(t time.Time, interval time.Duration) time.Time {
 	return time.Unix(alignedUnix, 0).UTC()
 }
 
-func GetIntervalFromDateRange(dateRange DateRange) string {
-	totalDur := dateRange.End.Sub(dateRange.Start)
-	var intervalSQL string
-	day := time.Hour * 24
-	month := day * 30
-	switch {
-	case totalDur < time.Minute:
-		intervalSQL = "1 second"
-	case totalDur >= time.Minute && totalDur <= time.Hour*4:
-		intervalSQL = "5 minute"
-	case totalDur >= time.Hour && totalDur <= day:
-		intervalSQL = "1 hour"
-	case totalDur >= time.Hour && totalDur <= day*4:
-		intervalSQL = "2 hour"
-	case totalDur >= day && totalDur <= month:
-		intervalSQL = "1 day"
-	default:
-		intervalSQL = "1 day"
-	}
-	return intervalSQL
+func GetIntervalFromDateRange(dr DateRange) string {
+	numOfBuckets := 15
+	secs := max(int(dr.End.Sub(dr.Start).Seconds())/numOfBuckets, 1)
+	return fmt.Sprintf("%d second", secs)
 }
