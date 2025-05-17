@@ -1,6 +1,7 @@
 package main
 
 import (
+	"embed"
 	"os"
 
 	"nabatshy/api"
@@ -8,6 +9,11 @@ import (
 	"nabatshy/db"
 	"nabatshy/utils"
 )
+
+//go:embed ui/dist/*
+var content embed.FS
+
+const uiDir = "ui/dist"
 
 func main() {
 	if os.Getenv("ENV") != "production" {
@@ -21,5 +27,6 @@ func main() {
 	databasePassword := os.Getenv("CLICKHOUSE_PASSWORD")
 	conn := db.InitClickHouse(databaseAddr, databaseDB, databaseUsername, databasePassword)
 	go func() { collector.Run(conn) }()
+	go utils.ServeUI(content, uiDir)
 	api.Run(conn)
 }
