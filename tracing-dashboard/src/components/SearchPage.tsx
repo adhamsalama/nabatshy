@@ -46,7 +46,7 @@ interface SearchResult {
 }
 
 interface SearchResponse {
-  results: SearchResult[];
+  results?: SearchResult[];
   totalCount: number;
   page: number;
   pageSize: number;
@@ -240,7 +240,7 @@ export const SearchPage: React.FC = () => {
       {/* Results Table */}
       {!loading &&
         searchResponse &&
-        searchResponse.results.length > 0 && (
+        searchResponse.results?.length > 0 && (
           <>
             <Box sx={{ gridColumn: 'span 12' }}>
               <TableContainer component={Paper}>
@@ -273,7 +273,7 @@ export const SearchPage: React.FC = () => {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {searchResponse.results.map((r, i) => {
+                    {searchResponse.results?.map((r, i) => {
                       const rowId = `${r.TraceID}-${r.SpanID}-${i}`;
                       const isExp = expandedRows.has(rowId);
                       const hasA = Object.keys(r.ResourceAttrs).length > 0;
