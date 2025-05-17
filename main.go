@@ -1,9 +1,11 @@
 package main
 
 import (
-	"nabatshy/receiver"
+	"nabatshy/api"
+	"nabatshy/collector"
 )
 
 func main() {
-	receiver.Run()
+	go func() { api.Run() }()
+	collector.Run()
 }

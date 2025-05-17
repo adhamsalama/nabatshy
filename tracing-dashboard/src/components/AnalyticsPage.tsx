@@ -30,7 +30,7 @@ import {
 import PercentileChart from './PercentileChart';
 import TraceCountChart from './TraceCountChart';
 import AvgDurationChart from './AvgDurationChart';
-
+import { config } from "../config.ts";
 
 
 interface ServiceMetrics {
@@ -89,7 +89,7 @@ const AnalyticsPage: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const baseUrl = 'http://localhost:4318/api/metrics';
+      const baseUrl = `${config.backendDomain}/api/metrics`;
       let params = '';
 
       if (timeRange === 'custom' && startDate && endDate) {

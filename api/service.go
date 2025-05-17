@@ -1,4 +1,4 @@
-package receiver
+package api
 
 import (
 	"context"
@@ -9,12 +9,14 @@ import (
 	"strings"
 	"time"
 
+	"nabatshy/utils"
+
 	"github.com/ClickHouse/clickhouse-go/v2"
 	clickhouseDriver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/doug-martin/goqu/v9"
-	coltrace "go.opentelemetry.io/proto/otlp/collector/trace/v1"
-	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 )
+
+var GetIntervalFromDateRange = utils.GetIntervalFromDateRange
 
 type TelemetryService struct {
 	Ch *clickhouse.Conn
@@ -194,57 +196,6 @@ func (s *TelemetryService) GetTopSlowTraces(ctx context.Context, n uint) ([]Trac
 	}
 
 	return results, nil
-}
-
-func (s *TelemetryService) ingestTrace(req *coltrace.ExportTraceServiceRequest) error {
-	ctx := context.Background()
-	for _, rs := range req.ResourceSpans {
-		resourceAttrs := extractAttributes(rs.Resource.Attributes)
-		resourceID, err := InsertResource(s.Ch, ctx, rs.SchemaUrl)
-		if err != nil {
-			return err
-		}
-		if err := InsertResourceAttributes(s.Ch, ctx, resourceID, resourceAttrs); err != nil {
-			return err
-		}
-
-		for _, ss := range rs.ScopeSpans {
-			scopeID, err := InsertScope(s.Ch, ctx, ss.Scope.Name, resourceID)
-			if err != nil {
-				return err
-			}
-
-			var spans []Span
-			var events []SpanEvent
-			for _, s := range ss.Spans {
-				spans = append(spans, Span{
-					TraceID:       encodeBytes(s.TraceId),
-					SpanID:        encodeBytes(s.SpanId),
-					ParentSpanID:  encodeBytes(s.ParentSpanId),
-					Flags:         int32(s.Flags),
-					Name:          s.Name,
-					StartUnixNano: int64(s.StartTimeUnixNano),
-					EndUnixNano:   int64(s.EndTimeUnixNano),
-				})
-
-				for _, e := range s.Events {
-					events = append(events, SpanEvent{
-						SpanID:       encodeBytes(s.SpanId),
-						TimeUnixNano: int64(e.TimeUnixNano),
-						Name:         e.Name,
-					})
-				}
-			}
-
-			if err := InsertSpans(s.Ch, ctx, scopeID, spans); err != nil {
-				return err
-			}
-			if err := InsertSpanEvents(s.Ch, ctx, events); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
 }
 
 func (s *TelemetryService) GetServiceTraces(ctx context.Context, service string) ([]ServiceTrace, error) {
@@ -443,27 +394,6 @@ func (s *TelemetryService) GetTraceHeatmap(ctx context.Context) ([]TraceHeatmapP
 	return heatmap, rows.Err()
 }
 
-func extractAttributes(attrs []*commonpb.KeyValue) map[string]string {
-	m := make(map[string]string, len(attrs))
-	for _, kv := range attrs {
-		if val := kv.GetValue(); val != nil {
-			switch v := val.Value.(type) {
-			case *commonpb.AnyValue_StringValue:
-				m[kv.Key] = v.StringValue
-			case *commonpb.AnyValue_IntValue:
-				m[kv.Key] = strconv.FormatInt(v.IntValue, 10)
-			case *commonpb.AnyValue_DoubleValue:
-				m[kv.Key] = strconv.FormatFloat(v.DoubleValue, 'f', -1, 64)
-			case *commonpb.AnyValue_BoolValue:
-				m[kv.Key] = strconv.FormatBool(v.BoolValue)
-			default:
-				fmt.Printf("Unhandled value type for key %s: %T\n", kv.Key, v)
-			}
-		}
-	}
-	return m
-}
-
 func encodeBytes(b []byte) string {
 	return base64.StdEncoding.EncodeToString(b)
 }
@@ -659,7 +589,7 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 		goqu.I("s1.scope_id"),
 	)
 	queryString, _, _ := ds.ToSQL()
-	intervalSQL := getIntervalFromDateRange(dateRange)
+	intervalSQL := GetIntervalFromDateRange(dateRange)
 	pResult, pErr := s.getPercentileForQuery(ctx, queryString, intervalSQL, dateRange, percentile)
 	if pErr != nil {
 		panic(pErr)
@@ -808,7 +738,7 @@ func (s *TelemetryService) GetTraceCounts(
 		"start_time_unix_nano >= %d AND start_time_unix_nano <= %d",
 		startNano, endNano,
 	)
-	intervalSQL := getIntervalFromDateRange(dateRange)
+	intervalSQL := GetIntervalFromDateRange(dateRange)
 
 	query := fmt.Sprintf(`
         SELECT
@@ -1067,11 +997,6 @@ func (s *TelemetryService) GetSlowestTraces(ctx context.Context, timeRange strin
 	return traces, rows.Err()
 }
 
-type TimePercentile struct {
-	Timestamp time.Time `json:"timestamp"` // start of the bucket
-	Value     float64   `json:"value"`     // the p-percentile (ms) in this bucket
-}
-
 func (s *TelemetryService) GetPercentileSeries(
 	ctx context.Context,
 	dateRange DateRange,
@@ -1092,7 +1017,7 @@ func (s *TelemetryService) GetPercentileSeries(
 		return nil, fmt.Errorf("invalid date range")
 	}
 
-	intervalSQL := getIntervalFromDateRange(dateRange)
+	intervalSQL := GetIntervalFromDateRange(dateRange)
 
 	query := fmt.Sprintf(`
         SELECT
@@ -1164,7 +1089,7 @@ func (s *TelemetryService) GetAvgDuration(
 		return nil, fmt.Errorf("invalid date range")
 	}
 
-	intervalSQL := getIntervalFromDateRange(dateRange)
+	intervalSQL := GetIntervalFromDateRange(dateRange)
 
 	// run ClickHouse query
 	query := fmt.Sprintf(`
@@ -1219,28 +1144,6 @@ func (s *TelemetryService) GetAvgDuration(
 		})
 	}
 	return series, nil
-}
-
-func getIntervalFromDateRange(dateRange DateRange) string {
-	totalDur := dateRange.End.Sub(dateRange.Start)
-	var intervalSQL string
-	day := time.Hour * 24
-	month := day * 30
-	switch {
-	case totalDur < time.Minute:
-		intervalSQL = "1 second"
-	case totalDur >= time.Minute && totalDur <= time.Hour*4:
-		intervalSQL = "5 minute"
-	case totalDur >= time.Hour && totalDur <= day:
-		intervalSQL = "1 hour"
-	case totalDur >= time.Hour && totalDur <= day*4:
-		intervalSQL = "2 hour"
-	case totalDur >= day && totalDur <= month:
-		intervalSQL = "1 day"
-	default:
-		intervalSQL = "1 day"
-	}
-	return intervalSQL
 }
 
 // factor out your filtering/joining logic into one helper

@@ -14,6 +14,7 @@ import {
   Box
 } from '@mui/material';
 import { SpanDetails, SpanDetail } from './SpanDetails';
+import { config } from "../config.ts";
 
 interface TraceSpan {
   SpanID: string;
@@ -43,7 +44,7 @@ export const TraceDetails = () => {
   useEffect(() => {
     const fetchTraceDetails = async () => {
       try {
-        const response = await fetch(`http://localhost:4318/v1/traces/${encodeURIComponent(traceId ?? '')}`);
+        const response = await fetch(`${config.backendUrl}/v1/traces/${encodeURIComponent(traceId ?? '')}`);
         if (!response.ok) {
           throw new Error('Failed to fetch trace details');
         }
@@ -67,7 +68,7 @@ export const TraceDetails = () => {
     }
     setSpanDetailLoading(true);
     setSpanDetailError(null);
-    fetch(`http://localhost:4318/v1/spans/${encodeURIComponent(selectedSpan.SpanID)}`)
+    fetch(`${config.backendUrl}/v1/spans/${encodeURIComponent(selectedSpan.SpanID)}`)
       .then(res => {
         if (!res.ok) throw new Error('Failed to fetch span details');
         return res.json();

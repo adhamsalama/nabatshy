@@ -33,6 +33,7 @@ import { format } from 'date-fns';
 import PercentileChart, { TimePercentile } from './PercentileChart';
 import TraceCountChart from './TraceCountChart';
 import AvgDurationChart from './AvgDurationChart';
+import { config } from "../config.ts";
 
 interface SearchResult {
   TraceID: string;
@@ -84,7 +85,7 @@ export const SearchPage: React.FC = () => {
     setError(null);
 
     try {
-      const url = new URL('http://localhost:4318/v1/search');
+      const url = new URL(`${config.backendUrl}/v1/search`);
       url.searchParams.set('query', query);
       url.searchParams.set('page', String(pageNum));
       url.searchParams.set('pageSize', String(pageSize));

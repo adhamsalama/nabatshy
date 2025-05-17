@@ -1,15 +1,17 @@
-package receiver
+package api
 
 import (
 	"log"
 	"net/http"
+
+	"nabatshy/db"
 
 	"github.com/doug-martin/goqu/v9"
 	"github.com/go-chi/chi/v5"
 )
 
 func Run() {
-	conn := InitClickHouse()
+	conn := db.InitClickHouse()
 	db := goqu.Dialect("default")
 	telService := TelemetryService{
 		Ch: &conn,
@@ -23,7 +25,7 @@ func Run() {
 
 	telController.RegisterRoutes(r)
 	// Start HTTP server
-	addr := ":4318"
+	addr := ":3000"
 	log.Printf("listening on %s\n", addr)
 	log.Fatal(http.ListenAndServe(addr, r))
 }
