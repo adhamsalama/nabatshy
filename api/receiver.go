@@ -4,14 +4,12 @@ import (
 	"log"
 	"net/http"
 
-	"nabatshy/db"
-
+	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/doug-martin/goqu/v9"
 	"github.com/go-chi/chi/v5"
 )
 
-func Run() {
-	conn := db.InitClickHouse()
+func Run(conn clickhouse.Conn) {
 	db := goqu.Dialect("default")
 	telService := TelemetryService{
 		Ch: &conn,

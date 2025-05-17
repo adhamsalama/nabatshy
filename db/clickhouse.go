@@ -7,15 +7,15 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 )
 
-func InitClickHouse() clickhouse.Conn {
+func InitClickHouse(addr, db, username, password string) clickhouse.Conn {
 	var err error
 	var ch clickhouse.Conn
 	ch, err = clickhouse.Open(&clickhouse.Options{
-		Addr: []string{"localhost:9000"},
+		Addr: []string{addr},
 		Auth: clickhouse.Auth{
-			Database: "default",
-			Username: "admin",
-			Password: "password",
+			Database: db,
+			Username: username,
+			Password: password,
 		},
 		Settings: clickhouse.Settings{
 			"max_execution_time": 60,
