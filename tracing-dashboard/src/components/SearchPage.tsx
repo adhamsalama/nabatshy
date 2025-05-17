@@ -24,7 +24,6 @@ import {
   Collapse,
   Button,
 } from '@mui/material';
-import { useNavigate } from 'react-router-dom';
 import SearchIcon from '@mui/icons-material/Search';
 import InfoIcon from '@mui/icons-material/Info';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -74,7 +73,6 @@ export const SearchPage: React.FC = () => {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [startDate, setStartDate] = useState(() => new Date(Date.now() - 5 * 60 * 1000));
   const [endDate, setEndDate] = useState(() => new Date());
-  const navigate = useNavigate();
 
   const handleSearch = async (pageNum = 1, pct = percentile) => {
     if (!startDate || !endDate || isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
