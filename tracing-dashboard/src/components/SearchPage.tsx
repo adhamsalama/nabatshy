@@ -280,7 +280,7 @@ export const SearchPage: React.FC = () => {
         </Box>
       )}
 
-      {!loading && searchResponse && searchResponse.results?.length > 0 && (
+      {!loading && (searchResponse?.results?.length ?? 0) > 0 && (
         <>
           <Box sx={{ gridColumn: 'span 12' }}>
             <TableContainer component={Paper}>
@@ -304,7 +304,7 @@ export const SearchPage: React.FC = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {searchResponse.results?.map((r, i) => {
+                  {searchResponse?.results?.map((r, i) => {
                     const rowId = `${r.TraceID}-${r.SpanID}-${i}`;
                     const isExp = expandedRows.has(rowId);
                     const hasA = Object.keys(r.ResourceAttrs).length > 0;

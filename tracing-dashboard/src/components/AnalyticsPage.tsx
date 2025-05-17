@@ -239,7 +239,7 @@ const AnalyticsPage: React.FC = () => {
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie data={serviceMetrics} dataKey="count" nameKey="service" cx="50%" cy="50%" outerRadius={150} label>
-                      {serviceMetrics.map((entry, index) => (
+                      {serviceMetrics.map((_, index) => (
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
                     </Pie>
