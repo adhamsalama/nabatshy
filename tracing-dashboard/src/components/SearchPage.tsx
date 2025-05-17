@@ -27,6 +27,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import InfoIcon from '@mui/icons-material/Info';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import { format } from 'date-fns';
 import { useSearchParams } from 'react-router-dom';
 import PercentileChart, { TimePercentile } from './PercentileChart';
@@ -195,7 +196,7 @@ export const SearchPage: React.FC = () => {
 
   return (
     <Box sx={{ p: 3, display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 2 }}>
-      <Box sx={{ gridColumn: 'span 12', display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+      <Box sx={{ gridColumn: 'span 12', display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
         <TextField
           label="Start Time"
           type="datetime-local"
@@ -236,6 +237,14 @@ export const SearchPage: React.FC = () => {
             ),
           }}
         />
+        <Button
+          variant="outlined"
+          startIcon={<RefreshIcon />}
+          onClick={() => handleSearch(1)}
+          disabled={loading}
+        >
+          Refresh
+        </Button>
       </Box>
 
       {error && (
