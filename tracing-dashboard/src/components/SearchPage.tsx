@@ -28,6 +28,7 @@ import InfoIcon from '@mui/icons-material/Info';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import { format } from 'date-fns';
+import { useSearchParams } from 'react-router-dom';
 import PercentileChart, { TimePercentile } from './PercentileChart';
 import TraceCountChart from './TraceCountChart';
 import AvgDurationChart from './AvgDurationChart';
@@ -56,6 +57,8 @@ interface SearchResponse {
 const percentileOptions = [50, 75, 90, 95, 99, 100] as const;
 
 export const SearchPage: React.FC = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+
   const [query, setQuery] = useState('');
   const [searchResponse, setSearchResponse] = useState<SearchResponse | null>(null);
   const [percentileSeries, setPercentileSeries] = useState<TimePercentile[]>([]);
@@ -73,25 +76,62 @@ export const SearchPage: React.FC = () => {
   const [startDate, setStartDate] = useState(() => new Date(Date.now() - 5 * 60 * 1000));
   const [endDate, setEndDate] = useState(() => new Date());
 
-  const handleSearch = async (pageNum = 1) => {
-    if (!startDate || !endDate || isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+  useEffect(() => {
+    const q = searchParams.get('query') ?? '';
+    const start = searchParams.get('start');
+    const end = searchParams.get('end');
+    const sf = searchParams.get('sortField') as typeof sortField;
+    const so = searchParams.get('sortOrder') as typeof sortOrder;
+    const pg = parseInt(searchParams.get('page') || '1');
+    const sz = parseInt(searchParams.get('pageSize') || '20');
+    const perc = parseInt(searchParams.get('percentile') || '95');
+
+    setQuery(q);
+    if (start) setStartDate(new Date(start));
+    if (end) setEndDate(new Date(end));
+    if (sf) setSortField(sf);
+    if (so) setSortOrder(so);
+    if (!isNaN(pg)) setPage(pg);
+    if (!isNaN(sz)) setPageSize(sz);
+    if (!isNaN(perc)) setPercentile(perc);
+
+    handleSearch(pg, q, sz, sf, so, start ? new Date(start) : startDate, end ? new Date(end) : endDate, perc);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleSearch = async (
+    pageNum = 1,
+    q = query,
+    size = pageSize,
+    sf = sortField,
+    so = sortOrder,
+    start = startDate,
+    end = endDate,
+    perc = percentile
+  ) => {
+    if (!start || !end || isNaN(start.getTime()) || isNaN(end.getTime())) {
       setError('Invalid start or end date');
       return;
     }
+
+    const params: Record<string, string> = {
+      query: q,
+      page: String(pageNum),
+      pageSize: String(size),
+      sortField: sf,
+      sortOrder: so,
+      start: start.toISOString(),
+      end: end.toISOString(),
+      percentile: String(perc),
+    };
+    setSearchParams(params);
     setLoading(true);
     setError(null);
 
-    const url = new URL(`${config.backendUrl}/v1/search`);
-    url.searchParams.set('query', query);
-    url.searchParams.set('page', String(pageNum));
-    url.searchParams.set('pageSize', String(pageSize));
-    url.searchParams.set('sortField', sortField);
-    url.searchParams.set('sortOrder', sortOrder);
-    url.searchParams.set('start', startDate.toISOString());
-    url.searchParams.set('end', endDate.toISOString());
-    url.searchParams.set('percentile', String(percentile));
-
     try {
+      const url = new URL(`${config.backendUrl}/v1/search`);
+      Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+
       const response = await fetch(url.toString());
       if (!response.ok) {
         const errText = await response.text();
@@ -116,38 +156,36 @@ export const SearchPage: React.FC = () => {
     }
   };
 
-  // initial load & refetch whenever sort changes
-  useEffect(() => {
-    handleSearch(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sortField, sortOrder]);
-
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') handleSearch(1);
   };
+
   const handlePageChange = (_: React.ChangeEvent<unknown>, v: number) => {
+    setPage(v);
     handleSearch(v);
   };
+
   const handlePageSizeChange = (e: SelectChangeEvent<number>) => {
-    setPageSize(e.target.value as number);
-    handleSearch(1);
+    const newSize = e.target.value as number;
+    setPageSize(newSize);
+    handleSearch(1, query, newSize);
   };
+
   const handleSortChange = (field: 'start_time' | 'end_time' | 'duration') => {
     if (field === sortField) {
-      setSortOrder(o => (o === 'asc' ? 'desc' : 'asc'));
+      const newOrder = sortOrder === 'asc' ? 'desc' : 'asc';
+      setSortOrder(newOrder);
+      handleSearch(1, query, pageSize, field, newOrder);
     } else {
       setSortField(field);
       setSortOrder('desc');
+      handleSearch(1, query, pageSize, field, 'desc');
     }
-    // no immediate handleSearch — effect will fire
   };
 
-  const formatTimestamp = (ns: number) =>
-    format(new Date(ns / 1e6), 'yyyy-MM-dd HH:mm:ss.SSS');
+  const formatTimestamp = (ns: number) => format(new Date(ns / 1e6), 'yyyy-MM-dd HH:mm:ss.SSS');
   const formatDuration = (ms: number) => `${ms.toFixed(2)} ms`;
-  const totalPages = searchResponse
-    ? Math.ceil(searchResponse.totalCount / searchResponse.pageSize)
-    : 0;
+  const totalPages = searchResponse ? Math.ceil(searchResponse.totalCount / searchResponse.pageSize) : 0;
   const toggleRow = (id: string) =>
     setExpandedRows(prev => {
       const next = new Set(prev);
@@ -157,7 +195,6 @@ export const SearchPage: React.FC = () => {
 
   return (
     <Box sx={{ p: 3, display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 2 }}>
-      {/* Header */}
       <Box sx={{ gridColumn: 'span 12', display: 'flex', gap: 2, flexWrap: 'wrap' }}>
         <TextField
           label="Start Time"
@@ -212,7 +249,6 @@ export const SearchPage: React.FC = () => {
         </Box>
       )}
 
-      {/* Charts */}
       {!loading && searchResponse && (
         <Box
           sx={{
@@ -235,7 +271,6 @@ export const SearchPage: React.FC = () => {
         </Box>
       )}
 
-      {/* Results Table */}
       {!loading && searchResponse && searchResponse.results.length > 0 && (
         <>
           <Box sx={{ gridColumn: 'span 12' }}>
@@ -247,22 +282,13 @@ export const SearchPage: React.FC = () => {
                     <TableCell>Span ID</TableCell>
                     <TableCell>Name</TableCell>
                     <TableCell>Service</TableCell>
-                    <TableCell
-                      onClick={() => handleSortChange('duration')}
-                      sx={{ cursor: 'pointer' }}
-                    >
+                    <TableCell onClick={() => handleSortChange('duration')} sx={{ cursor: 'pointer' }}>
                       Duration {sortField === 'duration' && (sortOrder === 'asc' ? '↑' : '↓')}
                     </TableCell>
-                    <TableCell
-                      onClick={() => handleSortChange('start_time')}
-                      sx={{ cursor: 'pointer' }}
-                    >
+                    <TableCell onClick={() => handleSortChange('start_time')} sx={{ cursor: 'pointer' }}>
                       Start Time {sortField === 'start_time' && (sortOrder === 'asc' ? '↑' : '↓')}
                     </TableCell>
-                    <TableCell
-                      onClick={() => handleSortChange('end_time')}
-                      sx={{ cursor: 'pointer' }}
-                    >
+                    <TableCell onClick={() => handleSortChange('end_time')} sx={{ cursor: 'pointer' }}>
                       End Time {sortField === 'end_time' && (sortOrder === 'asc' ? '↑' : '↓')}
                     </TableCell>
                     <TableCell>Attributes</TableCell>
@@ -276,17 +302,8 @@ export const SearchPage: React.FC = () => {
                     return (
                       <React.Fragment key={rowId}>
                         <TableRow
-                          onClick={() =>
-                            window.open(
-                              `/traces/${encodeURIComponent(r.TraceID)}`,
-                              '_blank',
-                              'noopener,noreferrer'
-                            )
-                          }
-                          sx={{
-                            cursor: 'pointer',
-                            '&:hover': { backgroundColor: 'rgba(0,0,0,0.04)' },
-                          }}
+                          onClick={() => window.open(`/traces/${encodeURIComponent(r.TraceID)}`, '_blank')}
+                          sx={{ cursor: 'pointer', '&:hover': { backgroundColor: 'rgba(0,0,0,0.04)' } }}
                         >
                           <TableCell>{r.TraceID}</TableCell>
                           <TableCell>{r.SpanID}</TableCell>
@@ -294,9 +311,7 @@ export const SearchPage: React.FC = () => {
                           <TableCell>{r.Service}</TableCell>
                           <TableCell>{formatDuration(r.Duration)}</TableCell>
                           <TableCell>{formatTimestamp(r.StartTime)}</TableCell>
-                          <TableCell>
-                            {formatTimestamp(r.StartTime + r.Duration * 1e6)}
-                          </TableCell>
+                          <TableCell>{formatTimestamp(r.StartTime + r.Duration * 1e6)}</TableCell>
                           <TableCell>
                             {hasA && (
                               <Button
@@ -320,12 +335,7 @@ export const SearchPage: React.FC = () => {
                                   <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
                                     {Object.entries(r.ResourceAttrs).map(([k, v]) => (
                                       <Tooltip key={k} title={`${k}: ${v}`}>
-                                        <Chip
-                                          size="small"
-                                          label={`${k}: ${v}`}
-                                          icon={<InfoIcon />}
-                                          onClick={e => e.stopPropagation()}
-                                        />
+                                        <Chip size="small" label={`${k}: ${v}`} icon={<InfoIcon />} />
                                       </Tooltip>
                                     ))}
                                   </Box>
@@ -342,7 +352,6 @@ export const SearchPage: React.FC = () => {
             </TableContainer>
           </Box>
 
-          {/* Pagination */}
           <Box
             sx={{
               gridColumn: 'span 12',
@@ -364,8 +373,7 @@ export const SearchPage: React.FC = () => {
             </FormControl>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
               <Typography>
-                Showing {(page - 1) * pageSize + 1} to{' '}
-                {Math.min(page * pageSize, totalCount)} of {totalCount} results
+                Showing {(page - 1) * pageSize + 1} to {Math.min(page * pageSize, totalCount)} of {totalCount} results
               </Typography>
               <Pagination count={totalPages} page={page} onChange={handlePageChange} />
             </Box>
