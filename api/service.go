@@ -546,23 +546,31 @@ func (s *TelemetryService) GetTraceList(ctx context.Context) ([]TraceList, error
 func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange, query string, page, pageSize int, sort SortOption, percentile int) (*SearchResponse, error) {
 	startNano := dateRange.Start.UnixNano()
 	endNano := dateRange.End.UnixNano()
-	countDS := s.DB.
+
+	base := s.DB.
 		From(goqu.T("span").As("s1")).
 		Join(goqu.T("scope"), goqu.On(goqu.I("s1.scope_id").Eq(goqu.I("scope.scope_id")))).
-		Join(goqu.T("resource_attributes").As("ra"), goqu.On(goqu.I("scope.resource_id").Eq(goqu.I("ra.resource_id")))).
+		Join(goqu.T("resource_attributes").As("ra"), goqu.On(goqu.I("scope.resource_id").Eq(goqu.I("ra.resource_id"))))
+
+	conds := []goqu.Expression{
+		goqu.I("s1.start_time_unix_nano").Gte(startNano),
+		goqu.I("s1.end_time_unix_nano").Lte(endNano),
+	}
+
+	if query != "" {
+		conds = append(conds, goqu.Or(
+			goqu.I("s1.name").Eq(query),
+			goqu.I("scope.name").Eq(query),
+			goqu.I("s1.trace_id").Eq(query),
+			goqu.I("s1.span_id").Eq(query),
+			goqu.I("ra.key").Eq(query),
+			goqu.I("ra.value").Eq(query),
+		))
+	}
+
+	countDS := base.
 		Select(goqu.L("count(DISTINCT s1.trace_id, s1.span_id)").As("count")).
-		Where(
-			goqu.Or(
-				goqu.I("s1.name").ILike("%"+query+"%"),
-				goqu.I("scope.name").ILike("%"+query+"%"),
-				goqu.I("s1.trace_id").ILike("%"+query+"%"),
-				goqu.I("s1.span_id").ILike("%"+query+"%"),
-				goqu.I("ra.key").ILike("%"+query+"%"),
-				goqu.I("ra.value").ILike("%"+query+"%"),
-			),
-			goqu.I("s1.start_time_unix_nano").Gte(startNano),
-			goqu.I("s1.end_time_unix_nano").Lte(endNano),
-		)
+		Where(conds...)
 
 	countSQL, countArgs, err := countDS.ToSQL()
 	if err != nil {
@@ -1148,22 +1156,32 @@ func (s *TelemetryService) GetAvgDuration(
 
 // factor out your filtering/joining logic into one helper
 func (s *TelemetryService) baseSpanDS(query string, startNs, endNs int64) *goqu.SelectDataset {
-	return s.DB.
+	ds := s.DB.
 		From(goqu.T("span").As("s1")).
-		Join(goqu.T("scope"), goqu.On(goqu.I("s1.scope_id").Eq(goqu.I("scope.scope_id")))).
-		Join(goqu.T("resource_attributes").As("ra"), goqu.On(goqu.I("scope.resource_id").Eq(goqu.I("ra.resource_id")))).
-		Where(
-			goqu.Or(
-				goqu.I("s1.name").ILike("%"+query+"%"),
-				goqu.I("scope.name").ILike("%"+query+"%"),
-				goqu.I("s1.trace_id").ILike("%"+query+"%"),
-				goqu.I("s1.span_id").ILike("%"+query+"%"),
-				goqu.I("ra.key").ILike("%"+query+"%"),
-				goqu.I("ra.value").ILike("%"+query+"%"),
-			),
-			goqu.I("s1.start_time_unix_nano").Gte(startNs),
-			goqu.I("s1.end_time_unix_nano").Lte(endNs),
-		)
+		Join(goqu.T("scope"), goqu.On(
+			goqu.I("s1.scope_id").Eq(goqu.I("scope.scope_id")),
+		)).
+		Join(goqu.T("resource_attributes").As("ra"), goqu.On(
+			goqu.I("scope.resource_id").Eq(goqu.I("ra.resource_id")),
+		))
+
+	conds := []goqu.Expression{
+		goqu.I("s1.start_time_unix_nano").Gte(startNs),
+		goqu.I("s1.end_time_unix_nano").Lte(endNs),
+	}
+
+	if query != "" {
+		conds = append(conds, goqu.Or(
+			goqu.I("s1.name").Eq(query),
+			goqu.I("scope.name").Eq(query),
+			goqu.I("s1.trace_id").Eq(query),
+			goqu.I("s1.span_id").Eq(query),
+			goqu.I("ra.key").Eq(query),
+			goqu.I("ra.value").Eq(query),
+		))
+	}
+
+	return ds.Where(conds...)
 }
 
 // getTraceCountForQuery mirrors getPercentileForQuery but returns counts per interval
