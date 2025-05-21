@@ -41,7 +41,7 @@ func ServeUI(content embed.FS, uiDir string) {
 	})
 
 	// Fallback for SPA routes: serve index.html
-	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+	r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
 		// Only serve index.html for routes without a file extension
 		if filepath.Ext(r.URL.Path) == "" {
 			indexPath := uiDir + "/index.html"
