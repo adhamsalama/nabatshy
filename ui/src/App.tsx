@@ -20,7 +20,7 @@ function App() {
               color: 'inherit',
             }}
           >
-            Tracing Dashboard
+            Nabatshy
           </Typography>
           <Button color="inherit" component={Link} to="/search">
             Search
