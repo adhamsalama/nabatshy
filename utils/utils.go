@@ -2,6 +2,7 @@ package utils
 
 import (
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -80,4 +81,54 @@ func GetIntervalFromDateRange(dr DateRange) string {
 	numOfBuckets := 15
 	secs := max(int(dr.End.Sub(dr.Start).Seconds())/numOfBuckets, 1)
 	return fmt.Sprintf("%d second", secs)
+}
+
+func ParseDateRange(query url.Values, startField, endField, timeRangeField string) (DateRange, error) {
+	startStr := query.Get(startField)
+	endStr := query.Get(endField)
+	if startStr != "" && endStr != "" {
+		startTime, err1 := time.Parse(time.RFC3339, startStr)
+		endTime, err2 := time.Parse(time.RFC3339, endStr)
+		if err1 == nil && err2 == nil {
+			return DateRange{Start: startTime, End: endTime}, nil
+		}
+		return DateRange{}, fmt.Errorf("invalid start or end time format")
+	}
+
+	timeRange := query.Get(timeRangeField)
+	return GetDateRangeFromQuery(timeRange), nil
+}
+
+func GetDateRangeFromQuery(timeRange string) DateRange {
+	end := time.Now()
+	if len(timeRange) < 2 {
+		return DateRange{Start: end, End: end} // invalid input fallback
+	}
+
+	unit := timeRange[len(timeRange)-1:]
+	valueStr := timeRange[:len(timeRange)-1]
+	value, err := strconv.Atoi(valueStr)
+	if err != nil {
+		return DateRange{Start: end, End: end} // invalid number
+	}
+
+	var duration time.Duration
+	switch unit {
+	case "s":
+		duration = time.Duration(value) * time.Second
+	case "m":
+		duration = time.Duration(value) * time.Minute
+	case "h":
+		duration = time.Duration(value) * time.Hour
+	case "d":
+		duration = time.Duration(value) * 24 * time.Hour
+	default:
+		return DateRange{Start: end, End: end} // unsupported unit
+	}
+
+	start := end.Add(-duration)
+	dateRange := DateRange{Start: start, End: end}
+
+	fmt.Printf("dateRange: %v\n", dateRange)
+	return dateRange
 }

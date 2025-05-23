@@ -18,6 +18,11 @@ type (
 	TimePercentile = utils.TimePercentile
 )
 
+var (
+	ParseDateRange        = utils.ParseDateRange
+	GetDateRangeFromQuery = utils.GetDateRangeFromQuery
+)
+
 type TelemetryController struct {
 	service TelemetryService
 }
@@ -193,7 +198,7 @@ func (c *TelemetryController) searchTraces(w http.ResponseWriter, r *http.Reques
 		}
 	} else {
 		timeRange := r.URL.Query().Get("timeRange")
-		dateRange = getDateRangeFromQuery(timeRange)
+		dateRange = GetDateRangeFromQuery(timeRange)
 	}
 	results, err := c.service.SearchTraces(r.Context(), dateRange, query, page, pageSize, sort, percentile)
 	if err != nil {
@@ -206,22 +211,10 @@ func (c *TelemetryController) searchTraces(w http.ResponseWriter, r *http.Reques
 }
 
 func (c *TelemetryController) getTraceMetrics(w http.ResponseWriter, r *http.Request) {
-	var dateRange DateRange
-
-	startStr := r.URL.Query().Get("start")
-	endStr := r.URL.Query().Get("end")
-	if startStr != "" && endStr != "" {
-		startTime, err1 := time.Parse(time.RFC3339, startStr)
-		endTime, err2 := time.Parse(time.RFC3339, endStr)
-		if err1 == nil && err2 == nil {
-			dateRange = DateRange{Start: startTime, End: endTime}
-		} else {
-			http.Error(w, "invalid start or end time format", http.StatusBadRequest)
-			return
-		}
-	} else {
-		timeRange := r.URL.Query().Get("timeRange")
-		dateRange = getDateRangeFromQuery(timeRange)
+	dateRange, err := ParseDateRange(r.URL.Query(), "start", "end", "timeRange")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
 	metrics, err := c.service.GetTraceCounts(r.Context(), dateRange)
@@ -263,57 +256,11 @@ func (c *TelemetryController) getServiceMetrics(w http.ResponseWriter, r *http.R
 	json.NewEncoder(w).Encode(metrics)
 }
 
-func getDateRangeFromQuery(timeRange string) DateRange {
-	end := time.Now()
-	if len(timeRange) < 2 {
-		return DateRange{Start: end, End: end} // invalid input fallback
-	}
-
-	unit := timeRange[len(timeRange)-1:]
-	valueStr := timeRange[:len(timeRange)-1]
-	value, err := strconv.Atoi(valueStr)
-	if err != nil {
-		return DateRange{Start: end, End: end} // invalid number
-	}
-
-	var duration time.Duration
-	switch unit {
-	case "s":
-		duration = time.Duration(value) * time.Second
-	case "m":
-		duration = time.Duration(value) * time.Minute
-	case "h":
-		duration = time.Duration(value) * time.Hour
-	case "d":
-		duration = time.Duration(value) * 24 * time.Hour
-	default:
-		return DateRange{Start: end, End: end} // unsupported unit
-	}
-
-	start := end.Add(-duration)
-	dateRange := DateRange{Start: start, End: end}
-
-	fmt.Printf("dateRange: %v\n", dateRange)
-	return dateRange
-}
-
 func (c *TelemetryController) getEndpointMetrics(w http.ResponseWriter, r *http.Request) {
-	var dateRange DateRange
-
-	startStr := r.URL.Query().Get("start")
-	endStr := r.URL.Query().Get("end")
-	if startStr != "" && endStr != "" {
-		startTime, err1 := time.Parse(time.RFC3339, startStr)
-		endTime, err2 := time.Parse(time.RFC3339, endStr)
-		if err1 == nil && err2 == nil {
-			dateRange = DateRange{Start: startTime, End: endTime}
-		} else {
-			http.Error(w, "invalid start or end time format", http.StatusBadRequest)
-			return
-		}
-	} else {
-		timeRange := r.URL.Query().Get("timeRange")
-		dateRange = getDateRangeFromQuery(timeRange)
+	dateRange, err := ParseDateRange(r.URL.Query(), "start", "end", "timeRange")
+	if err != nil {
+		http.Error(w, "invalid date range", http.StatusBadRequest)
+		return
 	}
 
 	metrics, err := c.service.GetEndpointMetrics(r.Context(), dateRange)
@@ -335,17 +282,10 @@ func (c *TelemetryController) getPMetrics(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	var dr DateRange
-	if startStr, endStr := q.Get("start"), q.Get("end"); startStr != "" && endStr != "" {
-		startT, err1 := time.Parse(time.RFC3339, startStr)
-		endT, err2 := time.Parse(time.RFC3339, endStr)
-		if err1 != nil || err2 != nil {
-			http.Error(w, "invalid start or end timestamp", http.StatusBadRequest)
-			return
-		}
-		dr = DateRange{Start: startT, End: endT}
-	} else {
-		dr = getDateRangeFromQuery(q.Get("timeRange"))
+	dr, err := ParseDateRange(q, "start", "end", "timeRange")
+	if err != nil {
+		http.Error(w, "invalid date range", http.StatusBadRequest)
+		return
 	}
 
 	series, err := c.service.GetPercentileSeries(r.Context(), dr, pct)
@@ -360,17 +300,10 @@ func (c *TelemetryController) getPMetrics(w http.ResponseWriter, r *http.Request
 
 func (c *TelemetryController) getAvgDuration(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	var dr DateRange
-	if startStr, endStr := q.Get("start"), q.Get("end"); startStr != "" && endStr != "" {
-		startT, err1 := time.Parse(time.RFC3339, startStr)
-		endT, err2 := time.Parse(time.RFC3339, endStr)
-		if err1 != nil || err2 != nil {
-			http.Error(w, "invalid start or end timestamp", http.StatusBadRequest)
-			return
-		}
-		dr = DateRange{Start: startT, End: endT}
-	} else {
-		dr = getDateRangeFromQuery(q.Get("timeRange"))
+	dr, err := ParseDateRange(q, "start", "end", "timeRange")
+	if err != nil {
+		http.Error(w, "invalid date range", http.StatusBadRequest)
+		return
 	}
 
 	series, err := c.service.GetAvgDuration(r.Context(), dr)
