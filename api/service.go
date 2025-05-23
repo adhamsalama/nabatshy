@@ -6,14 +6,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
-	"strings"
 	"time"
 
 	"nabatshy/utils"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
-	clickhouseDriver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/doug-martin/goqu/v9"
+)
+
+var (
+	PadQueryResult  = utils.PadQueryResult
+	ParseInterval   = utils.ParseInterval
+	AlignToInterval = utils.AlignToInterval
 )
 
 var GetIntervalFromDateRange = utils.GetIntervalFromDateRange
@@ -724,7 +728,7 @@ func (s *TelemetryService) getPercentileForQuery(ctx context.Context, queryStrin
 		return nil, fmt.Errorf("query error: %w", err)
 	}
 	defer pRows.Close()
-	pResult, pErr := padQueryResult(pRows, intervalSQL, dateRange)
+	pResult, pErr := PadQueryResult(pRows, intervalSQL, dateRange)
 	if pErr != nil {
 		panic(pErr)
 	}
@@ -782,13 +786,13 @@ func (s *TelemetryService) GetTraceCounts(
 	}
 
 	// get duration for stepping
-	intervalDur, err := parseInterval(intervalSQL)
+	intervalDur, err := ParseInterval(intervalSQL)
 	if err != nil {
 		return nil, fmt.Errorf("invalid interval: %w", err)
 	}
 
 	// align the start timestamp to ClickHouse buckets
-	alignedStart := alignToInterval(dateRange.Start, intervalDur)
+	alignedStart := AlignToInterval(dateRange.Start, intervalDur)
 
 	// iterate through every bucket, filling zeros if missing
 	var result []TimeCount
@@ -800,42 +804,6 @@ func (s *TelemetryService) GetTraceCounts(
 	}
 
 	return result, nil
-}
-
-// parseInterval turns "1 minute", "1 hour", etc. into time.Duration
-func parseInterval(interval string) (time.Duration, error) {
-	parts := strings.Fields(interval)
-	if len(parts) != 2 {
-		return 0, fmt.Errorf("invalid interval format: %q", interval)
-	}
-
-	n, err := strconv.Atoi(parts[0])
-	if err != nil || n <= 0 {
-		return 0, fmt.Errorf("invalid interval count: %q", parts[0])
-	}
-
-	unit := strings.ToLower(parts[1])
-	switch unit {
-	case "second", "seconds":
-		return time.Duration(n) * time.Second, nil
-	case "minute", "minutes":
-		return time.Duration(n) * time.Minute, nil
-	case "hour", "hours":
-		return time.Duration(n) * time.Hour, nil
-	case "day", "days":
-		return time.Duration(n) * 24 * time.Hour, nil
-	default:
-		return 0, fmt.Errorf("unsupported interval unit: %q", unit)
-	}
-}
-
-// alignToInterval truncates t down to the nearest multiple of interval,
-// matching ClickHouse toStartOfInterval behavior.
-func alignToInterval(t time.Time, interval time.Duration) time.Time {
-	secs := int64(interval.Seconds())
-	unix := t.Unix()
-	alignedUnix := unix - (unix % secs)
-	return time.Unix(alignedUnix, 0).UTC()
 }
 
 func (s *TelemetryService) GetServiceMetrics(ctx context.Context, timeRange string, start, end *time.Time) ([]ServiceMetrics, error) {
@@ -1050,41 +1018,7 @@ func (s *TelemetryService) GetPercentileSeries(
 	defer rows.Close()
 
 	// collect actual values
-	return padQueryResult(rows, intervalSQL, dateRange)
-}
-
-func padQueryResult(rows clickhouseDriver.Rows, intervalSQL string, dateRange DateRange) ([]TimePercentile, error) {
-	vals := make(map[time.Time]float64)
-	for rows.Next() {
-		var ts time.Time
-		var v float64
-		if err := rows.Scan(&ts, &v); err != nil {
-			return nil, err
-		}
-		vals[ts] = v
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	// determine step duration
-	step, err := parseInterval(intervalSQL)
-	if err != nil {
-		return nil, err
-	}
-
-	// align start to ClickHouse buckets
-	aligned := alignToInterval(dateRange.Start, step)
-
-	// build padded series
-	var series []TimePercentile
-	for ts := aligned; !ts.After(dateRange.End); ts = ts.Add(step) {
-		series = append(series, TimePercentile{
-			Timestamp: ts,
-			Value:     vals[ts], // zero if missing
-		})
-	}
-	return series, nil
+	return PadQueryResult(rows, intervalSQL, dateRange)
 }
 
 func (s *TelemetryService) GetAvgDuration(
@@ -1135,13 +1069,13 @@ func (s *TelemetryService) GetAvgDuration(
 	}
 
 	// determine step duration
-	step, err := parseInterval(intervalSQL)
+	step, err := ParseInterval(intervalSQL)
 	if err != nil {
 		return nil, err
 	}
 
 	// align start to ClickHouse buckets
-	aligned := alignToInterval(dateRange.Start, step)
+	aligned := AlignToInterval(dateRange.Start, step)
 
 	// build padded series
 	var series []TimePercentile
@@ -1213,7 +1147,7 @@ func (s *TelemetryService) getTraceCountForQuery(
 	defer cRows.Close()
 
 	// Pad missing intervals with zero counts
-	cResult, padErr := padQueryResult(cRows, intervalSQL, dateRange)
+	cResult, padErr := PadQueryResult(cRows, intervalSQL, dateRange)
 	if padErr != nil {
 		panic(padErr)
 	}
@@ -1249,7 +1183,7 @@ func (s *TelemetryService) getAverageDurationForQuery(
 	}
 	defer rows.Close()
 
-	result, padErr := padQueryResult(rows, intervalSQL, dateRange)
+	result, padErr := PadQueryResult(rows, intervalSQL, dateRange)
 	if padErr != nil {
 		return nil, fmt.Errorf("pad error: %w", padErr)
 	}
