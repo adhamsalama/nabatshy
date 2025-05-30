@@ -55,8 +55,8 @@ export const SpanDetails = ({ span }: { span?: SpanDetail | null }) => {
             {span.P90Duration !== undefined && <Chip label={`P90: ${span.P90Duration.toFixed(2)}ms`} />}
             {span.P99Duration !== undefined && <Chip label={`P99: ${span.P99Duration.toFixed(2)}ms`} />}
             {span.DurationDiff !== undefined && (
-              <Chip 
-                label={`Diff: ${span.DurationDiff.toFixed(2)}%`}
+              <Chip
+                label={`${Math.abs(span.DurationDiff).toFixed(2)}% ${span.DurationDiff > 0 ? 'slower' : 'faster'} than Avg`}
                 color={span.DurationDiff > 0 ? 'error' : 'success'}
               />
             )}
