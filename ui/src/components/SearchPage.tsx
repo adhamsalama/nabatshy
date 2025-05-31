@@ -85,7 +85,7 @@ export const SearchPage: React.FC = () => {
     const so = searchParams.get('sortOrder') as typeof sortOrder;
     const pg = parseInt(searchParams.get('page') || '1');
     const sz = parseInt(searchParams.get('pageSize') || '20');
-    const perc = parseInt(searchParams.get('percentile') || '95');
+    const perc = percentile ?? parseInt(searchParams.get('percentile') ?? percentile);
 
     setQuery(q);
     if (start) setStartDate(new Date(start));
@@ -98,7 +98,8 @@ export const SearchPage: React.FC = () => {
 
     handleSearch(pg, q, sz, sf, so, start ? new Date(start) : startDate, end ? new Date(end) : endDate, perc);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [percentile]);
+
 
   const handleSearch = async (
     pageNum = 1,
@@ -110,6 +111,8 @@ export const SearchPage: React.FC = () => {
     end = endDate,
     perc = percentile
   ) => {
+    const effectivePercentile = perc ?? percentile;
+
     if (!start || !end || isNaN(start.getTime()) || isNaN(end.getTime())) {
       setError('Invalid start or end date');
       return;
@@ -123,7 +126,7 @@ export const SearchPage: React.FC = () => {
       sortOrder: so,
       start: start.toISOString(),
       end: end.toISOString(),
-      percentile: String(perc),
+      percentile: String(effectivePercentile),
     };
     setSearchParams(params);
     setLoading(true);

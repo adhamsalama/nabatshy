@@ -1,5 +1,7 @@
 # Nabatshy
 
+![logo](./docs/assets/logo.png)
+
 A (WIP) observability platform built using OpenTelemetry, Go and Clickhouse.
 
 ![](./docs/assets/screenshot1.png)
