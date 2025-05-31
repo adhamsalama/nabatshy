@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -131,4 +132,63 @@ func GetDateRangeFromQuery(timeRange string) DateRange {
 
 	fmt.Printf("dateRange: %v\n", dateRange)
 	return dateRange
+}
+
+func InsertDenormalizedSpans(
+	ch *clickhouseDriver.Conn,
+	ctx context.Context,
+	spans []Span,
+) error {
+	if len(spans) == 0 {
+		return nil
+	}
+
+	batch, err := (*ch).PrepareBatch(ctx, "INSERT INTO denormalized_span")
+	if err != nil {
+		return fmt.Errorf("failed to prepare batch: %w", err)
+	}
+
+	for _, span := range spans {
+
+		// extarct resource attributes keys and values to its own slices
+		resourcesAttrsKyes := make([]string, 0, len(span.ResourceAttributes))
+		resourcesAttrsValues := make([]string, 0, len(span.ResourceAttributes))
+		for _, attr := range span.ResourceAttributes {
+			resourcesAttrsKyes = append(resourcesAttrsKyes, attr.Key)
+			resourcesAttrsValues = append(resourcesAttrsValues, attr.Value)
+		}
+		// the same for events
+		eventKeys := make([]string, 0, len(span.Events))
+		eventValues := make([]int64, 0, len(span.Events))
+		for _, event := range span.Events {
+			eventKeys = append(eventKeys, event.Name)
+			eventValues = append(eventValues, event.TimeUnixNano)
+		}
+
+		if err := batch.Append(
+			span.TraceID,           // trace_id
+			span.SpanID,            // span_id
+			span.ParentSpanID,      // parent_span_id
+			span.Flags,             // flags
+			span.Name,              // name
+			span.StartTimeUnixNano, // start_time_unix_nano
+			span.EndTimeUnixNano,   // end_time_unix_nano
+			span.ScopeID,           // scope_id
+			span.ScopeName,         // scope_name
+			span.ResourceID,        // resource_id
+			span.ResourceSchemaURL, // resource_schema_url
+			resourcesAttrsKyes,     // resource_attributes_keys
+			resourcesAttrsValues,   // resource_attributes_values
+			eventValues,            // event_values
+			eventKeys,              // event_keys
+		); err != nil {
+			return fmt.Errorf("failed to append span: %w", err)
+		}
+	}
+
+	if err := batch.Send(); err != nil {
+		return fmt.Errorf("failed to send batch: %w", err)
+	}
+
+	return nil
 }
