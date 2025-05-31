@@ -8,6 +8,8 @@ import (
 	"log"
 	"net/http"
 
+	"nabatshy/utils"
+
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/doug-martin/goqu/v9"
 	"github.com/go-chi/chi/v5"
@@ -16,6 +18,8 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
+
+type Span = utils.Span
 
 type TelemetryCollectorController struct {
 	service TelemetryCollectorService
@@ -258,16 +262,6 @@ func InsertScope(
 	return scopeID, err
 }
 
-type Span struct {
-	TraceID       string
-	SpanID        string
-	ParentSpanID  string
-	Flags         int32
-	Name          string
-	StartUnixNano int64
-	EndUnixNano   int64
-}
-
 func InsertSpans(
 	ch *clickhouse.Conn,
 	ctx context.Context, scopeID string, spans []Span,
@@ -277,7 +271,7 @@ func InsertSpans(
 		return err
 	}
 	for _, s := range spans {
-		if err := batch.Append(s.TraceID, s.SpanID, s.ParentSpanID, s.Flags, s.Name, s.StartUnixNano, s.EndUnixNano, scopeID); err != nil {
+		if err := batch.Append(s.TraceID, s.SpanID, s.ParentSpanID, s.Flags, s.Name, s.StartTimeUnixNano, s.EndTimeUnixNano, scopeID); err != nil {
 			return err
 		}
 	}

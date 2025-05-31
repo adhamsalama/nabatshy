@@ -167,7 +167,7 @@ type SlowTrace struct {
 
 func (s *TelemetryService) GetTopSlowTraces(ctx context.Context, n uint) ([]Trace, error) {
 	ds := s.DB.
-		From("span").
+		From("denormalized_span").
 		Select(
 			goqu.C("trace_id"),
 			goqu.C("name"),
@@ -204,15 +204,14 @@ func (s *TelemetryService) GetTopSlowTraces(ctx context.Context, n uint) ([]Trac
 
 func (s *TelemetryService) GetServiceTraces(ctx context.Context, service string) ([]ServiceTrace, error) {
 	ds := s.DB.
-		From("span").
-		Join(goqu.T("scope"), goqu.On(goqu.I("span.scope_id").Eq(goqu.I("scope.scope_id")))).
+		From("denormalized_span").
 		Select(
-			goqu.I("span.trace_id"),
-			goqu.I("span.name"),
-			goqu.L("span.duration_ns / 1000000").As("duration_ms"),
+			goqu.C("trace_id"),
+			goqu.C("name"),
+			goqu.L("duration_ns / 1000000").As("duration_ms"),
 		).
-		Where(goqu.I("scope.name").Eq(service)).
-		Order(goqu.I("span.start_time_unix_nano").Desc()).
+		Where(goqu.C("scope_name").Eq(service)).
+		Order(goqu.C("start_time_unix_nano").Desc()).
 		Limit(100)
 
 	sqlStr, args, err := ds.ToSQL()
@@ -239,19 +238,18 @@ func (s *TelemetryService) GetServiceTraces(ctx context.Context, service string)
 
 func (s *TelemetryService) GetTraceDetails(ctx context.Context, traceID string) ([]TraceSpan, error) {
 	ds := s.DB.
-		From("span").
-		Join(goqu.T("scope"), goqu.On(goqu.I("span.scope_id").Eq(goqu.I("scope.scope_id")))).
+		From("denormalized_span").
 		Select(
-			goqu.I("span.span_id"),
-			goqu.I("span.parent_span_id"),
-			goqu.I("span.name"),
-			goqu.I("scope.name").As("service_name"),
-			goqu.I("span.start_time_unix_nano"),
-			goqu.I("span.end_time_unix_nano"),
-			goqu.L("span.duration_ns / 1000000").As("duration_ms"),
+			goqu.C("span_id"),
+			goqu.C("parent_span_id"),
+			goqu.C("name"),
+			goqu.C("scope_name").As("service_name"),
+			goqu.C("start_time_unix_nano"),
+			goqu.C("end_time_unix_nano"),
+			goqu.L("duration_ns / 1000000").As("duration_ms"),
 		).
-		Where(goqu.I("span.trace_id").Eq(traceID)).
-		Order(goqu.I("span.start_time_unix_nano").Asc())
+		Where(goqu.C("trace_id").Eq(traceID)).
+		Order(goqu.C("start_time_unix_nano").Asc())
 
 	sqlStr, args, err := ds.ToSQL()
 	if err != nil {
@@ -277,21 +275,20 @@ func (s *TelemetryService) GetTraceDetails(ctx context.Context, traceID string) 
 
 func (s *TelemetryService) GetEndpointLatencies(ctx context.Context) ([]EndpointLatency, error) {
 	ds := s.DB.
-		From("span").
-		Join(goqu.T("scope"), goqu.On(goqu.I("span.scope_id").Eq(goqu.I("scope.scope_id")))).
+		From("denormalized_span").
 		Select(
-			goqu.I("span.name").As("endpoint"),
-			goqu.I("scope.name").As("service"),
-			goqu.L("avg(span.duration_ns / 1000000)").As("avg_duration_ms"),
-			goqu.L("min(span.duration_ns / 1000000)").As("min_duration_ms"),
-			goqu.L("max(span.duration_ns / 1000000)").As("max_duration_ms"),
-			goqu.L("quantile(0.5)(span.duration_ns / 1000000)").As("p50_duration_ms"),
-			goqu.L("quantile(0.9)(span.duration_ns / 1000000)").As("p90_duration_ms"),
-			goqu.L("quantile(0.99)(span.duration_ns / 1000000)").As("p99_duration_ms"),
+			goqu.C("name").As("endpoint"),
+			goqu.C("scope_name").As("service"),
+			goqu.L("avg(duration_ns / 1000000)").As("avg_duration_ms"),
+			goqu.L("min(duration_ns / 1000000)").As("min_duration_ms"),
+			goqu.L("max(duration_ns / 1000000)").As("max_duration_ms"),
+			goqu.L("quantile(0.5)(duration_ns / 1000000)").As("p50_duration_ms"),
+			goqu.L("quantile(0.9)(duration_ns / 1000000)").As("p90_duration_ms"),
+			goqu.L("quantile(0.99)(duration_ns / 1000000)").As("p99_duration_ms"),
 			goqu.L("count(*)").As("request_count"),
 		).
-		Where(goqu.I("span.parent_span_id").Eq("")).
-		GroupBy(goqu.I("span.name"), goqu.I("scope.name")).
+		Where(goqu.C("parent_span_id").Eq("")).
+		GroupBy(goqu.C("name"), goqu.C("scope_name")).
 		Order(goqu.L("avg_duration_ms").Desc())
 
 	sqlStr, args, err := ds.ToSQL()
@@ -328,17 +325,15 @@ func (s *TelemetryService) GetEndpointLatencies(ctx context.Context) ([]Endpoint
 
 func (s *TelemetryService) GetServiceDependencies(ctx context.Context) ([]ServiceDependency, error) {
 	ds := s.DB.
-		From(goqu.T("span").As("s1")).
-		Join(goqu.T("span").As("s2"), goqu.On(goqu.I("s1.span_id").Eq(goqu.I("s2.parent_span_id")))).
-		Join(goqu.T("scope").As("sc1"), goqu.On(goqu.I("s1.scope_id").Eq(goqu.I("sc1.scope_id")))).
-		Join(goqu.T("scope").As("sc2"), goqu.On(goqu.I("s2.scope_id").Eq(goqu.I("sc2.scope_id")))).
+		From("denormalized_span").As("s1").
+		Join(goqu.T("denormalized_span").As("s2"), goqu.On(goqu.I("s1.span_id").Eq(goqu.I("s2.parent_span_id")))).
 		Select(
-			goqu.I("sc1.name").As("parent_service"),
-			goqu.I("sc2.name").As("child_service"),
+			goqu.I("s1.scope_name").As("parent_service"),
+			goqu.I("s2.scope_name").As("child_service"),
 			goqu.L("count(*)").As("call_count"),
 		).
-		Where(goqu.I("sc1.name").Neq(goqu.I("sc2.name"))).
-		GroupBy(goqu.I("sc1.name"), goqu.I("sc2.name")).
+		Where(goqu.I("s1.scope_name").Neq(goqu.I("s2.scope_name"))).
+		GroupBy(goqu.I("s1.scope_name"), goqu.I("s2.scope_name")).
 		Order(goqu.L("call_count").Desc())
 
 	sqlStr, args, err := ds.ToSQL()
@@ -365,7 +360,7 @@ func (s *TelemetryService) GetServiceDependencies(ctx context.Context) ([]Servic
 
 func (s *TelemetryService) GetTraceHeatmap(ctx context.Context) ([]TraceHeatmapPoint, error) {
 	ds := s.DB.
-		From("span").
+		From("denormalized_span").
 		Select(
 			goqu.L("toStartOfHour(fromUnixTimestamp64Nano(start_time_unix_nano))").As("hour"),
 			goqu.L("count(*)").As("trace_count"),
@@ -404,39 +399,31 @@ func encodeBytes(b []byte) string {
 
 func (s *TelemetryService) GetSpanDetails(ctx context.Context, spanID string) (*SpanDetail, error) {
 	ds := s.DB.
-		From(goqu.T("span").As("s1")).
-		Join(goqu.T("scope"), goqu.On(goqu.I("s1.scope_id").Eq(goqu.I("scope.scope_id")))).
-		Join(
-			goqu.T("span").As("s2"),
-			goqu.On(goqu.I("s1.name").Eq(goqu.I("s2.name"))),
-		).
+		From(goqu.T("denormalized_span")).
 		Select(
-			goqu.I("s1.span_id"),
-			goqu.I("s1.trace_id"),
-			goqu.I("s1.parent_span_id"),
-			goqu.I("s1.name"),
-			goqu.I("scope.name").As("service_name"),
-			goqu.I("s1.start_time_unix_nano"),
-			goqu.I("s1.end_time_unix_nano"),
-			goqu.L("s1.duration_ns / 1000000").As("duration_ms"),
-			goqu.L("avg(s2.duration_ns / 1000000)").As("avg_duration_ms"),
-			goqu.L("quantile(0.5)(s2.duration_ns / 1000000)").As("p50_duration_ms"),
-			goqu.L("quantile(0.9)(s2.duration_ns / 1000000)").As("p90_duration_ms"),
-			goqu.L("quantile(0.99)(s2.duration_ns / 1000000)").As("p99_duration_ms"),
-			goqu.L("(s1.duration_ns / 1000000 - avg(s2.duration_ns / 1000000)) / avg(s2.duration_ns / 1000000) * 100").As("duration_diff_percent"),
-			goqu.I("s1.scope_id"),
+			goqu.I("span_id"),
+			goqu.I("trace_id"),
+			goqu.I("parent_span_id"),
+			goqu.I("name"),
+			goqu.I("scope_name").As("service_name"),
+			goqu.I("start_time_unix_nano"),
+			goqu.I("end_time_unix_nano"),
+			goqu.L("duration_ns / 1000000").As("duration_ms"),
+			goqu.I("resource_attributes.key").As("resource_keys"),
+			goqu.I("resource_attributes.value").As("resource_values"),
 		).
-		Where(goqu.I("s1.span_id").Eq(spanID)).
+		Where(goqu.I("span_id").Eq(spanID)).
 		GroupBy(
-			goqu.I("s1.span_id"),
-			goqu.I("s1.trace_id"),
-			goqu.I("s1.parent_span_id"),
-			goqu.I("s1.name"),
-			goqu.I("scope.name"),
-			goqu.I("s1.start_time_unix_nano"),
-			goqu.I("s1.end_time_unix_nano"),
-			goqu.I("s1.duration_ns"),
-			goqu.I("s1.scope_id"),
+			goqu.I("span_id"),
+			goqu.I("trace_id"),
+			goqu.I("parent_span_id"),
+			goqu.I("name"),
+			goqu.I("scope_name"),
+			goqu.I("start_time_unix_nano"),
+			goqu.I("end_time_unix_nano"),
+			goqu.I("duration_ns"),
+			goqu.I("resource_attributes.key"),
+			goqu.I("resource_attributes.value"),
 		)
 
 	sqlStr, args, err := ds.ToSQL()
@@ -455,7 +442,7 @@ func (s *TelemetryService) GetSpanDetails(ctx context.Context, spanID string) (*
 	}
 
 	var detail SpanDetail
-	var scopeID string
+	var resourceKeys, resourceValues []string
 	if err := rows.Scan(
 		&detail.SpanID,
 		&detail.TraceID,
@@ -465,46 +452,60 @@ func (s *TelemetryService) GetSpanDetails(ctx context.Context, spanID string) (*
 		&detail.StartTime,
 		&detail.EndTime,
 		&detail.Duration,
-		&detail.AvgDuration,
-		&detail.P50Duration,
-		&detail.P90Duration,
-		&detail.P99Duration,
-		&detail.DurationDiff,
-		&scopeID,
+		&resourceKeys,
+		&resourceValues,
 	); err != nil {
 		return nil, err
 	}
 
-	// Fetch resource_id for this scope
-	var resourceID string
-	err = (*s.Ch).QueryRow(ctx, "SELECT resource_id FROM scope WHERE scope_id = ?", scopeID).Scan(&resourceID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Fetch resource attributes for this resource_id
-	attrRows, err := (*s.Ch).Query(ctx, "SELECT key, value FROM resource_attributes WHERE resource_id = ?", resourceID)
-	if err != nil {
-		return nil, err
-	}
-	defer attrRows.Close()
+	// Map resource attributes
 	attrs := make(map[string]string)
-	for attrRows.Next() {
-		var k, v string
-		if err := attrRows.Scan(&k, &v); err != nil {
-			return nil, err
-		}
-		attrs[k] = v
+	for i := range resourceKeys {
+		attrs[resourceKeys[i]] = resourceValues[i]
 	}
 	detail.ResourceAttributes = attrs
+
+	// calculate avg durations of spans of the same name
+	avgDS := s.DB.
+		From(goqu.T("denormalized_span")).
+		Select(
+			goqu.L("avg(duration_ns / 1000000)").As("avg_duration_ms"),
+			goqu.L("quantile(0.5)(duration_ns / 1000000)").As("p50_duration_ms"),
+			goqu.L("quantile(0.9)(duration_ns / 1000000)").As("p90_duration_ms"),
+			goqu.L("quantile(0.99)(duration_ns / 1000000)").As("p99_duration_ms"),
+		).
+		Where(goqu.I("name").Eq(detail.Name)).
+		GroupBy(goqu.I("name"))
+	sqlAvgStr, avgArgs, err := avgDS.ToSQL()
+	if err != nil {
+		return nil, err
+	}
+	var avgResult struct {
+		AvgDuration float64 `db:"avg_duration_ms"`
+		P50Duration float64 `db:"p50_duration_ms"`
+		P90Duration float64 `db:"p90_duration_ms"`
+		P99Duration float64 `db:"p99_duration_ms"`
+	}
+	if err := (*s.Ch).QueryRow(ctx, sqlAvgStr, avgArgs...).Scan(
+		&avgResult.AvgDuration,
+		&avgResult.P50Duration,
+		&avgResult.P90Duration,
+		&avgResult.P99Duration,
+	); err != nil {
+		return nil, fmt.Errorf("failed to get avg durations: %w", err)
+	}
+	detail.AvgDuration = avgResult.AvgDuration
+	detail.P50Duration = avgResult.P50Duration
+	detail.P90Duration = avgResult.P90Duration
+	detail.P99Duration = avgResult.P99Duration
+	detail.DurationDiff = (detail.Duration - avgResult.AvgDuration) / avgResult.AvgDuration * 100
 
 	return &detail, nil
 }
 
 func (s *TelemetryService) GetTraceList(ctx context.Context) ([]TraceList, error) {
 	ds := s.DB.
-		From(goqu.T("span").As("s1")).
-		Join(goqu.T("scope"), goqu.On(goqu.I("s1.scope_id").Eq(goqu.I("scope.scope_id")))).
+		From(goqu.T("denormalized_span").As("s1")).
 		Select(
 			goqu.I("s1.trace_id"),
 			goqu.I("s1.name").As("root_span"),
@@ -551,29 +552,26 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 	startNano := dateRange.Start.UnixNano()
 	endNano := dateRange.End.UnixNano()
 
-	base := s.DB.
-		From(goqu.T("span").As("s1")).
-		Join(goqu.T("scope"), goqu.On(goqu.I("s1.scope_id").Eq(goqu.I("scope.scope_id")))).
-		Join(goqu.T("resource_attributes").As("ra"), goqu.On(goqu.I("scope.resource_id").Eq(goqu.I("ra.resource_id"))))
+	base := s.DB.From(goqu.T("denormalized_span"))
 
 	conds := []goqu.Expression{
-		goqu.I("s1.start_time_unix_nano").Gte(startNano),
-		goqu.I("s1.end_time_unix_nano").Lte(endNano),
+		goqu.I("start_time_unix_nano").Gte(startNano),
+		goqu.I("end_time_unix_nano").Lte(endNano),
 	}
 
 	if query != "" {
 		conds = append(conds, goqu.Or(
-			goqu.I("s1.name").Eq(query),
-			goqu.I("scope.name").Eq(query),
-			goqu.I("s1.trace_id").Eq(query),
-			goqu.I("s1.span_id").Eq(query),
-			goqu.I("ra.key").Eq(query),
-			goqu.I("ra.value").Eq(query),
+			goqu.I("name").Eq(query),
+			goqu.I("scope_name").Eq(query),
+			goqu.I("trace_id").Eq(query),
+			goqu.I("span_id").Eq(query),
+			goqu.L("has(resource_attributes.key, ?)", query),
+			goqu.L("has(resource_attributes.value, ?)", query),
 		))
 	}
 
 	countDS := base.
-		Select(goqu.L("count(DISTINCT s1.trace_id, s1.span_id)").As("count")).
+		Select(goqu.L("count(DISTINCT trace_id, span_id)").As("count")).
 		Where(conds...)
 
 	countSQL, countArgs, err := countDS.ToSQL()
@@ -587,55 +585,58 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 		return nil, err
 	}
 
-	// Then get paginated results
 	offset := (page - 1) * pageSize
-	q := s.baseSpanDS(query, startNano, endNano)
-	ds := q.Select(
-		goqu.I("s1.trace_id"),
-		goqu.I("s1.span_id"),
-		goqu.I("s1.name"),
-		goqu.I("scope.name").As("service_name"),
-		goqu.L("s1.duration_ns / 1000000").As("duration_ms"),
-		goqu.I("s1.start_time_unix_nano"),
-		goqu.I("s1.end_time_unix_nano"),
-		goqu.I("s1.scope_id"),
-	)
+
+	ds := base.
+		Select(
+			goqu.I("trace_id"),
+			goqu.I("span_id"),
+			goqu.I("name"),
+			goqu.I("scope_name").As("service_name"),
+			goqu.L("duration_ns / 1000000").As("duration_ms"),
+			goqu.I("start_time_unix_nano"),
+			goqu.I("end_time_unix_nano"),
+			goqu.I("resource_attributes.key").As("resource_keys"),
+			goqu.I("resource_attributes.value").As("resource_values"),
+		).
+		Where(conds...)
+
 	queryString, _, _ := ds.ToSQL()
 	intervalSQL := GetIntervalFromDateRange(dateRange)
+
 	pResult, pErr := s.getPercentileForQuery(ctx, queryString, intervalSQL, dateRange, percentile)
 	if pErr != nil {
-		panic(pErr)
+		return nil, pErr
 	}
 	tcResult, tcErr := s.getTraceCountForQuery(ctx, queryString, intervalSQL, dateRange)
 	if tcErr != nil {
-		panic(tcErr)
+		return nil, tcErr
 	}
 	avgResult, avgErr := s.getAverageDurationForQuery(ctx, queryString, intervalSQL, dateRange)
 	if avgErr != nil {
-		panic(avgErr)
+		return nil, avgErr
 	}
-	// Apply sorting
 	switch sort.Field {
 	case "start_time":
 		if sort.Order == "asc" {
-			ds = ds.Order(goqu.I("s1.start_time_unix_nano").Asc())
+			ds = ds.Order(goqu.I("start_time_unix_nano").Asc())
 		} else {
-			ds = ds.Order(goqu.I("s1.start_time_unix_nano").Desc())
+			ds = ds.Order(goqu.I("start_time_unix_nano").Desc())
 		}
 	case "end_time":
 		if sort.Order == "asc" {
-			ds = ds.Order(goqu.I("s1.end_time_unix_nano").Asc())
+			ds = ds.Order(goqu.I("end_time_unix_nano").Asc())
 		} else {
-			ds = ds.Order(goqu.I("s1.end_time_unix_nano").Desc())
+			ds = ds.Order(goqu.I("end_time_unix_nano").Desc())
 		}
 	case "duration":
 		if sort.Order == "asc" {
-			ds = ds.Order(goqu.L("s1.duration_ns").Asc())
+			ds = ds.Order(goqu.I("duration_ns").Asc())
 		} else {
-			ds = ds.Order(goqu.L("s1.duration_ns").Desc())
+			ds = ds.Order(goqu.I("duration_ns").Desc())
 		}
 	default:
-		ds = ds.Order(goqu.I("s1.start_time_unix_nano").Desc())
+		ds = ds.Order(goqu.I("start_time_unix_nano").Desc())
 	}
 
 	ds = ds.Limit(uint(pageSize)).Offset(uint(offset))
@@ -653,7 +654,7 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 	var results []SearchResult
 	for rows.Next() {
 		var r SearchResult
-		var scopeID string
+		var resourceKeys, resourceValues []string
 		if err := rows.Scan(
 			&r.TraceID,
 			&r.SpanID,
@@ -662,35 +663,16 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 			&r.Duration,
 			&r.StartTime,
 			&r.EndTime,
-			&scopeID,
+			&resourceKeys,
+			&resourceValues,
 		); err != nil {
 			return nil, err
 		}
-
-		// Fetch resource_id for this scope
-		var resourceID string
-		err = (*s.Ch).QueryRow(ctx, "SELECT resource_id FROM scope WHERE scope_id = ?", scopeID).Scan(&resourceID)
-		if err != nil {
-			return nil, err
-		}
-
-		// Fetch resource attributes
-		attrRows, err := (*s.Ch).Query(ctx, "SELECT key, value FROM resource_attributes WHERE resource_id = ?", resourceID)
-		if err != nil {
-			return nil, err
-		}
 		attrs := make(map[string]string)
-		for attrRows.Next() {
-			var k, v string
-			if err := attrRows.Scan(&k, &v); err != nil {
-				attrRows.Close()
-				return nil, err
-			}
-			attrs[k] = v
+		for i := range resourceKeys {
+			attrs[resourceKeys[i]] = resourceValues[i]
 		}
-		attrRows.Close()
 		r.ResourceAttrs = attrs
-
 		results = append(results, r)
 	}
 
@@ -723,6 +705,7 @@ func (s *TelemetryService) getPercentileForQuery(ctx context.Context, queryStrin
         FROM stats
         GROUP BY ts
         ORDER BY ts		`, queryString, intervalSQL, pFloat)
+
 	pRows, err := (*s.Ch).Query(ctx, pSeriesQuery)
 	if err != nil {
 		return nil, fmt.Errorf("query error: %w", err)
@@ -759,7 +742,7 @@ func (s *TelemetryService) GetTraceCounts(
                 INTERVAL %s
             ) AS ts,
             count() AS cnt
-        FROM span
+        FROM denormalized_span
         WHERE %s
         GROUP BY ts
         ORDER BY ts ASC
@@ -771,7 +754,6 @@ func (s *TelemetryService) GetTraceCounts(
 	}
 	defer rows.Close()
 
-	// collect actual counts
 	counts := make(map[time.Time]uint64)
 	for rows.Next() {
 		var ts time.Time
@@ -785,16 +767,13 @@ func (s *TelemetryService) GetTraceCounts(
 		return nil, fmt.Errorf("rows error: %w", err)
 	}
 
-	// get duration for stepping
 	intervalDur, err := ParseInterval(intervalSQL)
 	if err != nil {
 		return nil, fmt.Errorf("invalid interval: %w", err)
 	}
 
-	// align the start timestamp to ClickHouse buckets
 	alignedStart := AlignToInterval(dateRange.Start, intervalDur)
 
-	// iterate through every bucket, filling zeros if missing
 	var result []TimeCount
 	for ts := alignedStart; !ts.After(dateRange.End); ts = ts.Add(intervalDur) {
 		result = append(result, TimeCount{
@@ -831,10 +810,9 @@ func (s *TelemetryService) GetServiceMetrics(ctx context.Context, timeRange stri
 	query := `
 		WITH durations AS (
 			SELECT 
-				scope.name AS service,
+				scope_name AS service,
 				(end_time_unix_nano - start_time_unix_nano) / 1000000 AS duration_ms
-			FROM span
-			INNER JOIN scope ON span.scope_id = scope.scope_id
+			FROM denormalized_span
 			WHERE ` + timeFilter + `
 		),
 		service_stats AS (
@@ -885,7 +863,7 @@ func (s *TelemetryService) GetEndpointMetrics(ctx context.Context, dateRange Dat
 			SELECT 
 				name AS endpoint,
 				(end_time_unix_nano - start_time_unix_nano) / 1000000 AS duration_ms
-			FROM span
+			FROM denormalized_span
 			WHERE ` + timeFilter + `
 			ORDER BY end_time_unix_nano ASC
 		)
@@ -898,6 +876,7 @@ func (s *TelemetryService) GetEndpointMetrics(ctx context.Context, dateRange Dat
 		GROUP BY endpoint
 		--ORDER BY duration_ms DESC
 		LIMIT 10`
+
 	rows, err := (*s.Ch).Query(ctx, query)
 	if err != nil {
 		return nil, err
@@ -932,17 +911,16 @@ func (s *TelemetryService) GetSlowestTraces(ctx context.Context, timeRange strin
 	}
 
 	ds := s.DB.
-		From("span").
-		Join(goqu.T("scope"), goqu.On(goqu.I("span.scope_id").Eq(goqu.I("scope.scope_id")))).
+		From("denormalized_span").
 		Select(
-			goqu.I("span.trace_id"),
-			goqu.I("span.name"),
+			goqu.C("trace_id"),
+			goqu.C("name"),
 			goqu.L("(end_time_unix_nano - start_time_unix_nano) / 1000000").As("duration_ms"),
-			goqu.I("scope.name").As("service"),
-			goqu.I("span.start_time_unix_nano").As("start_time"),
+			goqu.C("scope_name").As("service"),
+			goqu.C("start_time_unix_nano").As("start_time"),
 		).
 		Where(goqu.And(
-			goqu.I("span.parent_span_id").Eq(""),
+			goqu.C("parent_span_id").Eq(""),
 			goqu.L(timeFilter),
 		)).
 		Order(goqu.L("duration_ms").Desc()).
@@ -962,11 +940,9 @@ func (s *TelemetryService) GetSlowestTraces(ctx context.Context, timeRange strin
 	var traces []SlowTrace
 	for rows.Next() {
 		var t SlowTrace
-		var rawTraceID []byte
-		if err := rows.Scan(&rawTraceID, &t.Name, &t.Duration, &t.Service, &t.StartTime); err != nil {
+		if err := rows.Scan(&t.TraceID, &t.Name, &t.Duration, &t.Service, &t.StartTime); err != nil {
 			return nil, err
 		}
-		t.TraceID = encodeBytes(rawTraceID)
 		traces = append(traces, t)
 	}
 
@@ -1004,7 +980,7 @@ func (s *TelemetryService) GetPercentileSeries(
             quantile(%f)(
                 (end_time_unix_nano - start_time_unix_nano) / 1000000
             ) AS pvalue
-        FROM span
+        FROM denormalized_span
         WHERE start_time_unix_nano >= %d
           AND end_time_unix_nano   <= %d
         GROUP BY ts
@@ -1041,7 +1017,7 @@ func (s *TelemetryService) GetAvgDuration(
                 INTERVAL %s
             ) AS ts,
             avg((end_time_unix_nano - start_time_unix_nano) / 1000000) AS pvalue
-        FROM span
+        FROM denormalized_span
         WHERE start_time_unix_nano >= %d
           AND end_time_unix_nano   <= %d
         GROUP BY ts
@@ -1119,6 +1095,7 @@ func (s *TelemetryService) baseSpanDS(query string, startNs, endNs int64) *goqu.
 }
 
 // getTraceCountForQuery mirrors getPercentileForQuery but returns counts per interval
+
 func (s *TelemetryService) getTraceCountForQuery(
 	ctx context.Context,
 	queryString string,
@@ -1126,7 +1103,7 @@ func (s *TelemetryService) getTraceCountForQuery(
 	dateRange DateRange,
 ) ([]TimePercentile, error) {
 	cSeriesQuery := fmt.Sprintf(`
-        WITH stats as (
+        WITH stats AS (
             %s
         )
         SELECT
@@ -1149,7 +1126,7 @@ func (s *TelemetryService) getTraceCountForQuery(
 	// Pad missing intervals with zero counts
 	cResult, padErr := PadQueryResult(cRows, intervalSQL, dateRange)
 	if padErr != nil {
-		panic(padErr)
+		return nil, padErr
 	}
 	return cResult, nil
 }

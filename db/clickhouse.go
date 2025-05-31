@@ -81,3 +81,24 @@ CREATE TABLE event (
 ) ENGINE = MergeTree
 ORDER BY (span_id, time_unix_nano);
 */
+
+/*
+CREATE TABLE denormalized_span (
+    trace_id String,
+    span_id String,
+    parent_span_id String,
+    flags Int32,
+    name String,
+    start_time_unix_nano Int64,
+    end_time_unix_nano Int64,
+    duration_ns Int64 MATERIALIZED (end_time_unix_nano - start_time_unix_nano),
+    scope_id UUID,
+    scope_name String, -- From the `scope` table
+    resource_id UUID, -- From the `scope` table
+    resource_schema_url String, -- From the `resource` table
+    resource_attributes Nested (key String, value String), -- From the `resource_attributes` table
+    events Nested (time_unix_nano Int64, name String), -- From the `event` table
+    PRIMARY KEY (trace_id, span_id)
+) ENGINE = MergeTree
+ORDER BY (trace_id, span_id);
+*/
