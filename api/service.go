@@ -669,8 +669,8 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 							),
 						))
 					case "!=":
-						// Not equals: match spans that either don't have the key or have a different value
-						attrConds = append(attrConds, goqu.Or(
+						// Not equals: match spans that don't have the key=value pair in either resource or span attributes
+						attrConds = append(attrConds, goqu.And(
 							// Resource attributes: key doesn't exist OR (key exists AND value is different)
 							goqu.Or(
 								goqu.L("NOT has(resource_attributes.key, ?)", attr.Key),
