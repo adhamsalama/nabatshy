@@ -563,20 +563,21 @@ func (s *TelemetryService) GetTraceList(ctx context.Context) ([]TraceList, error
 	return traces, rows.Err()
 }
 
-// AttributeQuery represents a parsed key=value pair
+// AttributeQuery represents a parsed key=value or key!=value pair
 type AttributeQuery struct {
-	Key   string
-	Value string
+	Key      string
+	Value    string
+	Operator string // "=" or "!="
 }
 
-// parseAttributeQuery parses query string like "attribute1=value1,attribute2=value2"
+// parseAttributeQuery parses query string like "attribute1=value1,attribute2!=value2"
 // Returns nil if query doesn't match this format (falls back to original search)
 func parseAttributeQuery(query string) []AttributeQuery {
 	if query == "" {
 		return nil
 	}
 	
-	// Check if query contains = sign (indicating key=value format)
+	// Check if query contains = or != operators
 	if !strings.Contains(query, "=") {
 		return nil
 	}
@@ -585,12 +586,28 @@ func parseAttributeQuery(query string) []AttributeQuery {
 	var attrs []AttributeQuery
 	
 	for _, pair := range pairs {
-		parts := strings.SplitN(strings.TrimSpace(pair), "=", 2)
-		if len(parts) == 2 {
-			attrs = append(attrs, AttributeQuery{
-				Key:   strings.TrimSpace(parts[0]),
-				Value: strings.TrimSpace(parts[1]),
-			})
+		pair = strings.TrimSpace(pair)
+		
+		// Check for != operator first (longer match)
+		if strings.Contains(pair, "!=") {
+			parts := strings.SplitN(pair, "!=", 2)
+			if len(parts) == 2 {
+				attrs = append(attrs, AttributeQuery{
+					Key:      strings.TrimSpace(parts[0]),
+					Value:    strings.TrimSpace(parts[1]),
+					Operator: "!=",
+				})
+			}
+		} else if strings.Contains(pair, "=") {
+			// Check for = operator
+			parts := strings.SplitN(pair, "=", 2)
+			if len(parts) == 2 {
+				attrs = append(attrs, AttributeQuery{
+					Key:      strings.TrimSpace(parts[0]),
+					Value:    strings.TrimSpace(parts[1]),
+					Operator: "=",
+				})
+			}
 		}
 	}
 	
@@ -616,20 +633,42 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 	if query != "" {
 		// Try to parse as attribute query first
 		if attrs := parseAttributeQuery(query); attrs != nil {
-			// Build AND conditions for each key=value pair
+			// Build AND conditions for each key=value or key!=value pair
 			var attrConds []goqu.Expression
 			for _, attr := range attrs {
-				// Search in both resource and span attributes
-				attrConds = append(attrConds, goqu.Or(
-					goqu.And(
-						goqu.L("has(resource_attributes.key, ?)", attr.Key),
-						goqu.L("has(resource_attributes.value, ?)", attr.Value),
-					),
-					goqu.And(
-						goqu.L("has(span_attributes.key, ?)", attr.Key),
-						goqu.L("has(span_attributes.value, ?)", attr.Value),
-					),
-				))
+				if attr.Operator == "=" {
+					// Equals: match spans that have this exact key=value pair
+					attrConds = append(attrConds, goqu.Or(
+						goqu.And(
+							goqu.L("has(resource_attributes.key, ?)", attr.Key),
+							goqu.L("has(resource_attributes.value, ?)", attr.Value),
+						),
+						goqu.And(
+							goqu.L("has(span_attributes.key, ?)", attr.Key),
+							goqu.L("has(span_attributes.value, ?)", attr.Value),
+						),
+					))
+				} else if attr.Operator == "!=" {
+					// Not equals: match spans that either don't have the key or have a different value
+					attrConds = append(attrConds, goqu.Or(
+						// Resource attributes: key doesn't exist OR (key exists AND value is different)
+						goqu.Or(
+							goqu.L("NOT has(resource_attributes.key, ?)", attr.Key),
+							goqu.And(
+								goqu.L("has(resource_attributes.key, ?)", attr.Key),
+								goqu.L("NOT has(resource_attributes.value, ?)", attr.Value),
+							),
+						),
+						// Span attributes: key doesn't exist OR (key exists AND value is different) 
+						goqu.Or(
+							goqu.L("NOT has(span_attributes.key, ?)", attr.Key),
+							goqu.And(
+								goqu.L("has(span_attributes.key, ?)", attr.Key),
+								goqu.L("NOT has(span_attributes.value, ?)", attr.Value),
+							),
+						),
+					))
+				}
 			}
 			// All attribute conditions must match (AND)
 			conds = append(conds, goqu.And(attrConds...))
