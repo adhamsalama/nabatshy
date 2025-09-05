@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"nabatshy/utils"
@@ -562,6 +563,45 @@ func (s *TelemetryService) GetTraceList(ctx context.Context) ([]TraceList, error
 	return traces, rows.Err()
 }
 
+// AttributeQuery represents a parsed key=value pair
+type AttributeQuery struct {
+	Key   string
+	Value string
+}
+
+// parseAttributeQuery parses query string like "attribute1=value1,attribute2=value2"
+// Returns nil if query doesn't match this format (falls back to original search)
+func parseAttributeQuery(query string) []AttributeQuery {
+	if query == "" {
+		return nil
+	}
+	
+	// Check if query contains = sign (indicating key=value format)
+	if !strings.Contains(query, "=") {
+		return nil
+	}
+	
+	pairs := strings.Split(query, ",")
+	var attrs []AttributeQuery
+	
+	for _, pair := range pairs {
+		parts := strings.SplitN(strings.TrimSpace(pair), "=", 2)
+		if len(parts) == 2 {
+			attrs = append(attrs, AttributeQuery{
+				Key:   strings.TrimSpace(parts[0]),
+				Value: strings.TrimSpace(parts[1]),
+			})
+		}
+	}
+	
+	// Only return parsed attributes if all pairs were valid
+	if len(attrs) == len(pairs) {
+		return attrs
+	}
+	
+	return nil
+}
+
 func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange, query string, page, pageSize int, sort SortOption, percentile int) (*SearchResponse, error) {
 	startNano := dateRange.Start.UnixNano()
 	endNano := dateRange.End.UnixNano()
@@ -574,16 +614,38 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 	}
 
 	if query != "" {
-		conds = append(conds, goqu.Or(
-			goqu.I("name").Eq(query),
-			goqu.I("scope_name").Eq(query),
-			goqu.I("trace_id").Eq(query),
-			goqu.I("span_id").Eq(query),
-			goqu.L("has(resource_attributes.key, ?)", query),
-			goqu.L("has(resource_attributes.value, ?)", query),
-			goqu.L("has(span_attributes.key, ?)", query),
-			goqu.L("has(span_attributes.value, ?)", query),
-		))
+		// Try to parse as attribute query first
+		if attrs := parseAttributeQuery(query); attrs != nil {
+			// Build AND conditions for each key=value pair
+			var attrConds []goqu.Expression
+			for _, attr := range attrs {
+				// Search in both resource and span attributes
+				attrConds = append(attrConds, goqu.Or(
+					goqu.And(
+						goqu.L("has(resource_attributes.key, ?)", attr.Key),
+						goqu.L("has(resource_attributes.value, ?)", attr.Value),
+					),
+					goqu.And(
+						goqu.L("has(span_attributes.key, ?)", attr.Key),
+						goqu.L("has(span_attributes.value, ?)", attr.Value),
+					),
+				))
+			}
+			// All attribute conditions must match (AND)
+			conds = append(conds, goqu.And(attrConds...))
+		} else {
+			// Fallback to original broad search
+			conds = append(conds, goqu.Or(
+				goqu.I("name").Eq(query),
+				goqu.I("scope_name").Eq(query),
+				goqu.I("trace_id").Eq(query),
+				goqu.I("span_id").Eq(query),
+				goqu.L("has(resource_attributes.key, ?)", query),
+				goqu.L("has(resource_attributes.value, ?)", query),
+				goqu.L("has(span_attributes.key, ?)", query),
+				goqu.L("has(span_attributes.value, ?)", query),
+			))
+		}
 	}
 
 	countDS := base.
