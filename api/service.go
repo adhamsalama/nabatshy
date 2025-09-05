@@ -637,22 +637,26 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 			var attrConds []goqu.Expression
 			for _, attr := range attrs {
 				// Handle special "name" key for span name matching
-				if attr.Key == "name" {
-					if attr.Operator == "=" {
+				switch attr.Key {
+				case "name":
+					switch attr.Operator {
+					case "=":
 						attrConds = append(attrConds, goqu.I("name").Eq(attr.Value))
-					} else if attr.Operator == "!=" {
+					case "!=":
 						attrConds = append(attrConds, goqu.I("name").Neq(attr.Value))
 					}
-				} else if attr.Key == "service" || attr.Key == "service.name" {
+				case "service", "service.name":
 					// Handle special "service" or "service.name" key for service name matching
-					if attr.Operator == "=" {
+					switch attr.Operator {
+					case "=":
 						attrConds = append(attrConds, goqu.I("scope_name").Eq(attr.Value))
-					} else if attr.Operator == "!=" {
+					case "!=":
 						attrConds = append(attrConds, goqu.I("scope_name").Neq(attr.Value))
 					}
-				} else {
+				default:
 					// Handle regular attribute searches
-					if attr.Operator == "=" {
+					switch attr.Operator {
+					case "=":
 						// Equals: match spans that have this exact key=value pair
 						attrConds = append(attrConds, goqu.Or(
 							goqu.And(
@@ -664,7 +668,7 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 								goqu.L("has(span_attributes.value, ?)", attr.Value),
 							),
 						))
-					} else if attr.Operator == "!=" {
+					case "!=":
 						// Not equals: match spans that either don't have the key or have a different value
 						attrConds = append(attrConds, goqu.Or(
 							// Resource attributes: key doesn't exist OR (key exists AND value is different)
@@ -675,7 +679,7 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 									goqu.L("NOT has(resource_attributes.value, ?)", attr.Value),
 								),
 							),
-							// Span attributes: key doesn't exist OR (key exists AND value is different) 
+							// Span attributes: key doesn't exist OR (key exists AND value is different)
 							goqu.Or(
 								goqu.L("NOT has(span_attributes.key, ?)", attr.Key),
 								goqu.And(
