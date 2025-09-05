@@ -636,38 +636,55 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 			// Build AND conditions for each key=value or key!=value pair
 			var attrConds []goqu.Expression
 			for _, attr := range attrs {
-				if attr.Operator == "=" {
-					// Equals: match spans that have this exact key=value pair
-					attrConds = append(attrConds, goqu.Or(
-						goqu.And(
-							goqu.L("has(resource_attributes.key, ?)", attr.Key),
-							goqu.L("has(resource_attributes.value, ?)", attr.Value),
-						),
-						goqu.And(
-							goqu.L("has(span_attributes.key, ?)", attr.Key),
-							goqu.L("has(span_attributes.value, ?)", attr.Value),
-						),
-					))
-				} else if attr.Operator == "!=" {
-					// Not equals: match spans that either don't have the key or have a different value
-					attrConds = append(attrConds, goqu.Or(
-						// Resource attributes: key doesn't exist OR (key exists AND value is different)
-						goqu.Or(
-							goqu.L("NOT has(resource_attributes.key, ?)", attr.Key),
+				// Handle special "name" key for span name matching
+				if attr.Key == "name" {
+					if attr.Operator == "=" {
+						attrConds = append(attrConds, goqu.I("name").Eq(attr.Value))
+					} else if attr.Operator == "!=" {
+						attrConds = append(attrConds, goqu.I("name").Neq(attr.Value))
+					}
+				} else if attr.Key == "service" || attr.Key == "service.name" {
+					// Handle special "service" or "service.name" key for service name matching
+					if attr.Operator == "=" {
+						attrConds = append(attrConds, goqu.I("scope_name").Eq(attr.Value))
+					} else if attr.Operator == "!=" {
+						attrConds = append(attrConds, goqu.I("scope_name").Neq(attr.Value))
+					}
+				} else {
+					// Handle regular attribute searches
+					if attr.Operator == "=" {
+						// Equals: match spans that have this exact key=value pair
+						attrConds = append(attrConds, goqu.Or(
 							goqu.And(
 								goqu.L("has(resource_attributes.key, ?)", attr.Key),
-								goqu.L("NOT has(resource_attributes.value, ?)", attr.Value),
+								goqu.L("has(resource_attributes.value, ?)", attr.Value),
 							),
-						),
-						// Span attributes: key doesn't exist OR (key exists AND value is different) 
-						goqu.Or(
-							goqu.L("NOT has(span_attributes.key, ?)", attr.Key),
 							goqu.And(
 								goqu.L("has(span_attributes.key, ?)", attr.Key),
-								goqu.L("NOT has(span_attributes.value, ?)", attr.Value),
+								goqu.L("has(span_attributes.value, ?)", attr.Value),
 							),
-						),
-					))
+						))
+					} else if attr.Operator == "!=" {
+						// Not equals: match spans that either don't have the key or have a different value
+						attrConds = append(attrConds, goqu.Or(
+							// Resource attributes: key doesn't exist OR (key exists AND value is different)
+							goqu.Or(
+								goqu.L("NOT has(resource_attributes.key, ?)", attr.Key),
+								goqu.And(
+									goqu.L("has(resource_attributes.key, ?)", attr.Key),
+									goqu.L("NOT has(resource_attributes.value, ?)", attr.Value),
+								),
+							),
+							// Span attributes: key doesn't exist OR (key exists AND value is different) 
+							goqu.Or(
+								goqu.L("NOT has(span_attributes.key, ?)", attr.Key),
+								goqu.And(
+									goqu.L("has(span_attributes.key, ?)", attr.Key),
+									goqu.L("NOT has(span_attributes.value, ?)", attr.Value),
+								),
+							),
+						))
+					}
 				}
 			}
 			// All attribute conditions must match (AND)
