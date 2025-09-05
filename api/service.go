@@ -576,18 +576,18 @@ func parseAttributeQuery(query string) []AttributeQuery {
 	if query == "" {
 		return nil
 	}
-	
+
 	// Check if query contains = or != operators
 	if !strings.Contains(query, "=") {
 		return nil
 	}
-	
+
 	pairs := strings.Split(query, ",")
 	var attrs []AttributeQuery
-	
+
 	for _, pair := range pairs {
 		pair = strings.TrimSpace(pair)
-		
+
 		// Check for != operator first (longer match)
 		if strings.Contains(pair, "!=") {
 			parts := strings.SplitN(pair, "!=", 2)
@@ -610,12 +610,12 @@ func parseAttributeQuery(query string) []AttributeQuery {
 			}
 		}
 	}
-	
+
 	// Only return parsed attributes if all pairs were valid
 	if len(attrs) == len(pairs) {
 		return attrs
 	}
-	
+
 	return nil
 }
 
