@@ -40,5 +40,6 @@ type Span struct {
 	ResourceID         uuid.UUID
 	ResourceSchemaURL  string
 	ResourceAttributes []ResourceAttribute
+	SpanAttributes     []ResourceAttribute
 	Events             []Event
 }

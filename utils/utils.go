@@ -157,7 +157,15 @@ func InsertDenormalizedSpans(
 			resourcesAttrsKyes = append(resourcesAttrsKyes, attr.Key)
 			resourcesAttrsValues = append(resourcesAttrsValues, attr.Value)
 		}
-		// the same for events
+
+		// extract span attributes keys and values to its own slices
+		spanAttrsKeys := make([]string, 0, len(span.SpanAttributes))
+		spanAttrsValues := make([]string, 0, len(span.SpanAttributes))
+		for _, attr := range span.SpanAttributes {
+			spanAttrsKeys = append(spanAttrsKeys, attr.Key)
+			spanAttrsValues = append(spanAttrsValues, attr.Value)
+		}
+
 		eventKeys := make([]string, 0, len(span.Events))
 		eventValues := make([]int64, 0, len(span.Events))
 		for _, event := range span.Events {
@@ -181,6 +189,8 @@ func InsertDenormalizedSpans(
 			resourcesAttrsValues,   // resource_attributes_values
 			eventValues,            // event_values
 			eventKeys,              // event_keys
+			spanAttrsKeys,          // span_attributes.key
+			spanAttrsValues,        // span_attributes.value
 		); err != nil {
 			return fmt.Errorf("failed to append span: %w", err)
 		}

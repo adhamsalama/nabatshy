@@ -15,6 +15,7 @@ export interface SpanDetail {
   P99Duration?: number;
   DurationDiff?: number;
   resourceAttributes?: Record<string, string>;
+  spanAttributes?: Record<string, string>;
 }
 
 export const SpanDetails = ({ span }: { span?: SpanDetail | null }) => {
@@ -62,6 +63,38 @@ export const SpanDetails = ({ span }: { span?: SpanDetail | null }) => {
             )}
           </Box>
         </Box>
+        {span.spanAttributes && Object.keys(span.spanAttributes).length > 0 && (
+          <Box mt={3}>
+            <Typography variant="subtitle1" gutterBottom>Span Attributes</Typography>
+            <Paper variant="outlined" sx={{ p: 2, background: '#e3f2fd' }}>
+              <Box display="flex" flexWrap="wrap" gap={2}>
+                {Object.entries(span.spanAttributes).map(([key, value]) => (
+                  <Box key={key} flexBasis="100%" minWidth={200} mb={1}>
+                    <Typography variant="body2">
+                      <strong>{key}:</strong> {
+                        key === 'db.statement' ? (
+                          <Box component="pre" sx={{ 
+                            mt: 1, 
+                            p: 1, 
+                            background: '#f5f5f5', 
+                            border: '1px solid #ddd',
+                            borderRadius: '4px',
+                            fontSize: '0.75rem',
+                            overflow: 'auto'
+                          }}>
+                            {value}
+                          </Box>
+                        ) : (
+                          <span>{value}</span>
+                        )
+                      }
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+            </Paper>
+          </Box>
+        )}
         {span.resourceAttributes && Object.keys(span.resourceAttributes).length > 0 && (
           <Box mt={3}>
             <Typography variant="subtitle1" gutterBottom>Resource Attributes</Typography>

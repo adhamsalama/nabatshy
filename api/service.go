@@ -88,6 +88,7 @@ type SpanDetail struct {
 	P99Duration        float64           `db:"p99_duration_ms"`
 	DurationDiff       float64           `db:"duration_diff_percent"`
 	ResourceAttributes map[string]string `json:"resourceAttributes"`
+	SpanAttributes     map[string]string `json:"spanAttributes"`
 }
 
 type TraceList struct {
@@ -411,6 +412,8 @@ func (s *TelemetryService) GetSpanDetails(ctx context.Context, spanID string) (*
 			goqu.L("duration_ns / 1000000").As("duration_ms"),
 			goqu.I("resource_attributes.key").As("resource_keys"),
 			goqu.I("resource_attributes.value").As("resource_values"),
+			goqu.I("span_attributes.key").As("span_keys"),
+			goqu.I("span_attributes.value").As("span_values"),
 		).
 		Where(goqu.I("span_id").Eq(spanID)).
 		GroupBy(
@@ -424,6 +427,8 @@ func (s *TelemetryService) GetSpanDetails(ctx context.Context, spanID string) (*
 			goqu.I("duration_ns"),
 			goqu.I("resource_attributes.key"),
 			goqu.I("resource_attributes.value"),
+			goqu.I("span_attributes.key"),
+			goqu.I("span_attributes.value"),
 		)
 
 	sqlStr, args, err := ds.ToSQL()
@@ -442,7 +447,7 @@ func (s *TelemetryService) GetSpanDetails(ctx context.Context, spanID string) (*
 	}
 
 	var detail SpanDetail
-	var resourceKeys, resourceValues []string
+	var resourceKeys, resourceValues, spanKeys, spanValues []string
 	if err := rows.Scan(
 		&detail.SpanID,
 		&detail.TraceID,
@@ -454,16 +459,25 @@ func (s *TelemetryService) GetSpanDetails(ctx context.Context, spanID string) (*
 		&detail.Duration,
 		&resourceKeys,
 		&resourceValues,
+		&spanKeys,
+		&spanValues,
 	); err != nil {
 		return nil, err
 	}
 
 	// Map resource attributes
-	attrs := make(map[string]string)
+	resourceAttrs := make(map[string]string)
 	for i := range resourceKeys {
-		attrs[resourceKeys[i]] = resourceValues[i]
+		resourceAttrs[resourceKeys[i]] = resourceValues[i]
 	}
-	detail.ResourceAttributes = attrs
+	detail.ResourceAttributes = resourceAttrs
+
+	// Map span attributes (this will include db.statement)
+	spanAttrs := make(map[string]string)
+	for i := range spanKeys {
+		spanAttrs[spanKeys[i]] = spanValues[i]
+	}
+	detail.SpanAttributes = spanAttrs
 
 	// calculate avg durations of spans of the same name
 	avgDS := s.DB.
@@ -567,6 +581,8 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 			goqu.I("span_id").Eq(query),
 			goqu.L("has(resource_attributes.key, ?)", query),
 			goqu.L("has(resource_attributes.value, ?)", query),
+			goqu.L("has(span_attributes.key, ?)", query),
+			goqu.L("has(span_attributes.value, ?)", query),
 		))
 	}
 

@@ -83,6 +83,7 @@ type SpanDetail struct {
 	P99Duration        float64           `db:"p99_duration_ms"`
 	DurationDiff       float64           `db:"duration_diff_percent"`
 	ResourceAttributes map[string]string `json:"resourceAttributes"`
+	SpanAttributes     map[string]string `json:"spanAttributes"`
 }
 
 type TraceList struct {
@@ -103,7 +104,7 @@ func (s *TelemetryCollectorService) ingestTrace(req *coltrace.ExportTraceService
 		for _, ss := range rs.ScopeSpans {
 			scopeName := ss.Scope.Name
 
-			var spans []Span
+			var spans []utils.Span
 			for _, span := range ss.Spans {
 				// Collect events for the span
 				var events []utils.Event
@@ -127,8 +128,20 @@ func (s *TelemetryCollectorService) ingestTrace(req *coltrace.ExportTraceService
 					)
 				}
 
+				// Extract span attributes (this is where db.statement will be)
+				spanAttrs := extractAttributes(span.Attributes)
+				var spanAttributes []utils.ResourceAttribute
+				for k, v := range spanAttrs {
+					spanAttributes = append(spanAttributes,
+						utils.ResourceAttribute{
+							Key:   k,
+							Value: v,
+						},
+					)
+				}
+
 				// Append the denormalized span
-				spans = append(spans, Span{
+				spans = append(spans, utils.Span{
 					TraceID:            encodeBytes(span.TraceId),
 					SpanID:             encodeBytes(span.SpanId),
 					ParentSpanID:       encodeBytes(span.ParentSpanId),
@@ -139,6 +152,7 @@ func (s *TelemetryCollectorService) ingestTrace(req *coltrace.ExportTraceService
 					ScopeName:          scopeName,
 					ResourceSchemaURL:  resourceSchemaURL,
 					ResourceAttributes: resourceAttributes,
+					SpanAttributes:     spanAttributes,
 					Events:             events,
 				})
 			}
