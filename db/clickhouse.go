@@ -97,6 +97,7 @@ CREATE TABLE denormalized_span (
     resource_id UUID, -- From the `scope` table
     resource_schema_url String, -- From the `resource` table
     resource_attributes Nested (key String, value String), -- From the `resource_attributes` table
+    span_attributes Nested (key String, value String), -- Span-level attributes (db.statement, etc.)
     events Nested (time_unix_nano Int64, name String), -- From the `event` table
     PRIMARY KEY (trace_id, span_id)
 ) ENGINE = MergeTree

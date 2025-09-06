@@ -134,6 +134,27 @@ func GetDateRangeFromQuery(timeRange string) DateRange {
 	return dateRange
 }
 
+// DenormalizedSpanRow represents a row in the denormalized_span table
+type DenormalizedSpanRow struct {
+	TraceID                 string   `ch:"trace_id"`
+	SpanID                  string   `ch:"span_id"`
+	ParentSpanID            string   `ch:"parent_span_id"`
+	Flags                   int32    `ch:"flags"`
+	Name                    string   `ch:"name"`
+	StartTimeUnixNano       int64    `ch:"start_time_unix_nano"`
+	EndTimeUnixNano         int64    `ch:"end_time_unix_nano"`
+	ScopeID                 string   `ch:"scope_id"`
+	ScopeName               string   `ch:"scope_name"`
+	ResourceID              string   `ch:"resource_id"`
+	ResourceSchemaURL       string   `ch:"resource_schema_url"`
+	ResourceAttributesKey   []string `ch:"resource_attributes.key"`
+	ResourceAttributesValue []string `ch:"resource_attributes.value"`
+	SpanAttributesKey       []string `ch:"span_attributes.key"`
+	SpanAttributesValue     []string `ch:"span_attributes.value"`
+	EventsTimeUnixNano      []int64  `ch:"events.time_unix_nano"`
+	EventsName              []string `ch:"events.name"`
+}
+
 func InsertDenormalizedSpans(
 	ch *clickhouseDriver.Conn,
 	ctx context.Context,
@@ -149,39 +170,51 @@ func InsertDenormalizedSpans(
 	}
 
 	for _, span := range spans {
-
-		// extarct resource attributes keys and values to its own slices
-		resourcesAttrsKyes := make([]string, 0, len(span.ResourceAttributes))
-		resourcesAttrsValues := make([]string, 0, len(span.ResourceAttributes))
-		for _, attr := range span.ResourceAttributes {
-			resourcesAttrsKyes = append(resourcesAttrsKyes, attr.Key)
-			resourcesAttrsValues = append(resourcesAttrsValues, attr.Value)
-		}
-		// the same for events
-		eventKeys := make([]string, 0, len(span.Events))
-		eventValues := make([]int64, 0, len(span.Events))
-		for _, event := range span.Events {
-			eventKeys = append(eventKeys, event.Name)
-			eventValues = append(eventValues, event.TimeUnixNano)
+		// Extract resource attribute keys and values
+		resourceKeys := make([]string, len(span.ResourceAttributes))
+		resourceValues := make([]string, len(span.ResourceAttributes))
+		for i, attr := range span.ResourceAttributes {
+			resourceKeys[i] = attr.Key
+			resourceValues[i] = attr.Value
 		}
 
-		if err := batch.Append(
-			span.TraceID,           // trace_id
-			span.SpanID,            // span_id
-			span.ParentSpanID,      // parent_span_id
-			span.Flags,             // flags
-			span.Name,              // name
-			span.StartTimeUnixNano, // start_time_unix_nano
-			span.EndTimeUnixNano,   // end_time_unix_nano
-			span.ScopeID,           // scope_id
-			span.ScopeName,         // scope_name
-			span.ResourceID,        // resource_id
-			span.ResourceSchemaURL, // resource_schema_url
-			resourcesAttrsKyes,     // resource_attributes_keys
-			resourcesAttrsValues,   // resource_attributes_values
-			eventValues,            // event_values
-			eventKeys,              // event_keys
-		); err != nil {
+		// Extract span attribute keys and values
+		spanKeys := make([]string, len(span.SpanAttributes))
+		spanValues := make([]string, len(span.SpanAttributes))
+		for i, attr := range span.SpanAttributes {
+			spanKeys[i] = attr.Key
+			spanValues[i] = attr.Value
+		}
+
+		// Extract event data
+		eventTimes := make([]int64, len(span.Events))
+		eventNames := make([]string, len(span.Events))
+		for i, event := range span.Events {
+			eventTimes[i] = event.TimeUnixNano
+			eventNames[i] = event.Name
+		}
+
+		row := DenormalizedSpanRow{
+			TraceID:                 span.TraceID,
+			SpanID:                  span.SpanID,
+			ParentSpanID:            span.ParentSpanID,
+			Flags:                   span.Flags,
+			Name:                    span.Name,
+			StartTimeUnixNano:       span.StartTimeUnixNano,
+			EndTimeUnixNano:         span.EndTimeUnixNano,
+			ScopeID:                 span.ScopeID.String(),
+			ScopeName:               span.ScopeName,
+			ResourceID:              span.ResourceID.String(),
+			ResourceSchemaURL:       span.ResourceSchemaURL,
+			ResourceAttributesKey:   resourceKeys,
+			ResourceAttributesValue: resourceValues,
+			SpanAttributesKey:       spanKeys,
+			SpanAttributesValue:     spanValues,
+			EventsTimeUnixNano:      eventTimes,
+			EventsName:              eventNames,
+		}
+
+		if err := batch.AppendStruct(&row); err != nil {
 			return fmt.Errorf("failed to append span: %w", err)
 		}
 	}

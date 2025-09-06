@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"nabatshy/utils"
@@ -88,6 +89,7 @@ type SpanDetail struct {
 	P99Duration        float64           `db:"p99_duration_ms"`
 	DurationDiff       float64           `db:"duration_diff_percent"`
 	ResourceAttributes map[string]string `json:"resourceAttributes"`
+	SpanAttributes     map[string]string `json:"spanAttributes"`
 }
 
 type TraceList struct {
@@ -411,6 +413,8 @@ func (s *TelemetryService) GetSpanDetails(ctx context.Context, spanID string) (*
 			goqu.L("duration_ns / 1000000").As("duration_ms"),
 			goqu.I("resource_attributes.key").As("resource_keys"),
 			goqu.I("resource_attributes.value").As("resource_values"),
+			goqu.I("span_attributes.key").As("span_keys"),
+			goqu.I("span_attributes.value").As("span_values"),
 		).
 		Where(goqu.I("span_id").Eq(spanID)).
 		GroupBy(
@@ -424,6 +428,8 @@ func (s *TelemetryService) GetSpanDetails(ctx context.Context, spanID string) (*
 			goqu.I("duration_ns"),
 			goqu.I("resource_attributes.key"),
 			goqu.I("resource_attributes.value"),
+			goqu.I("span_attributes.key"),
+			goqu.I("span_attributes.value"),
 		)
 
 	sqlStr, args, err := ds.ToSQL()
@@ -442,7 +448,7 @@ func (s *TelemetryService) GetSpanDetails(ctx context.Context, spanID string) (*
 	}
 
 	var detail SpanDetail
-	var resourceKeys, resourceValues []string
+	var resourceKeys, resourceValues, spanKeys, spanValues []string
 	if err := rows.Scan(
 		&detail.SpanID,
 		&detail.TraceID,
@@ -454,16 +460,25 @@ func (s *TelemetryService) GetSpanDetails(ctx context.Context, spanID string) (*
 		&detail.Duration,
 		&resourceKeys,
 		&resourceValues,
+		&spanKeys,
+		&spanValues,
 	); err != nil {
 		return nil, err
 	}
 
 	// Map resource attributes
-	attrs := make(map[string]string)
+	resourceAttrs := make(map[string]string)
 	for i := range resourceKeys {
-		attrs[resourceKeys[i]] = resourceValues[i]
+		resourceAttrs[resourceKeys[i]] = resourceValues[i]
 	}
-	detail.ResourceAttributes = attrs
+	detail.ResourceAttributes = resourceAttrs
+
+	// Map span attributes (this will include db.statement)
+	spanAttrs := make(map[string]string)
+	for i := range spanKeys {
+		spanAttrs[spanKeys[i]] = spanValues[i]
+	}
+	detail.SpanAttributes = spanAttrs
 
 	// calculate avg durations of spans of the same name
 	avgDS := s.DB.
@@ -548,6 +563,62 @@ func (s *TelemetryService) GetTraceList(ctx context.Context) ([]TraceList, error
 	return traces, rows.Err()
 }
 
+// AttributeQuery represents a parsed key=value or key!=value pair
+type AttributeQuery struct {
+	Key      string
+	Value    string
+	Operator string // "=" or "!="
+}
+
+// parseAttributeQuery parses query string like "attribute1=value1,attribute2!=value2"
+// Returns nil if query doesn't match this format (falls back to original search)
+func parseAttributeQuery(query string) []AttributeQuery {
+	if query == "" {
+		return nil
+	}
+
+	// Check if query contains = or != operators
+	if !strings.Contains(query, "=") {
+		return nil
+	}
+
+	pairs := strings.Split(query, ",")
+	var attrs []AttributeQuery
+
+	for _, pair := range pairs {
+		pair = strings.TrimSpace(pair)
+
+		// Check for != operator first (longer match)
+		if strings.Contains(pair, "!=") {
+			parts := strings.SplitN(pair, "!=", 2)
+			if len(parts) == 2 {
+				attrs = append(attrs, AttributeQuery{
+					Key:      strings.TrimSpace(parts[0]),
+					Value:    strings.TrimSpace(parts[1]),
+					Operator: "!=",
+				})
+			}
+		} else if strings.Contains(pair, "=") {
+			// Check for = operator
+			parts := strings.SplitN(pair, "=", 2)
+			if len(parts) == 2 {
+				attrs = append(attrs, AttributeQuery{
+					Key:      strings.TrimSpace(parts[0]),
+					Value:    strings.TrimSpace(parts[1]),
+					Operator: "=",
+				})
+			}
+		}
+	}
+
+	// Only return parsed attributes if all pairs were valid
+	if len(attrs) == len(pairs) {
+		return attrs
+	}
+
+	return nil
+}
+
 func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange, query string, page, pageSize int, sort SortOption, percentile int) (*SearchResponse, error) {
 	startNano := dateRange.Start.UnixNano()
 	endNano := dateRange.End.UnixNano()
@@ -560,14 +631,81 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 	}
 
 	if query != "" {
-		conds = append(conds, goqu.Or(
-			goqu.I("name").Eq(query),
-			goqu.I("scope_name").Eq(query),
-			goqu.I("trace_id").Eq(query),
-			goqu.I("span_id").Eq(query),
-			goqu.L("has(resource_attributes.key, ?)", query),
-			goqu.L("has(resource_attributes.value, ?)", query),
-		))
+		// Try to parse as attribute query first
+		if attrs := parseAttributeQuery(query); attrs != nil {
+			// Build AND conditions for each key=value or key!=value pair
+			var attrConds []goqu.Expression
+			for _, attr := range attrs {
+				// Handle special "name" key for span name matching
+				switch attr.Key {
+				case "name":
+					switch attr.Operator {
+					case "=":
+						attrConds = append(attrConds, goqu.I("name").Eq(attr.Value))
+					case "!=":
+						attrConds = append(attrConds, goqu.I("name").Neq(attr.Value))
+					}
+				case "service", "service.name":
+					// Handle special "service" or "service.name" key for service name matching
+					switch attr.Operator {
+					case "=":
+						attrConds = append(attrConds, goqu.I("scope_name").Eq(attr.Value))
+					case "!=":
+						attrConds = append(attrConds, goqu.I("scope_name").Neq(attr.Value))
+					}
+				default:
+					// Handle regular attribute searches
+					switch attr.Operator {
+					case "=":
+						// Equals: match spans that have this exact key=value pair
+						attrConds = append(attrConds, goqu.Or(
+							goqu.And(
+								goqu.L("has(resource_attributes.key, ?)", attr.Key),
+								goqu.L("has(resource_attributes.value, ?)", attr.Value),
+							),
+							goqu.And(
+								goqu.L("has(span_attributes.key, ?)", attr.Key),
+								goqu.L("has(span_attributes.value, ?)", attr.Value),
+							),
+						))
+					case "!=":
+						// Not equals: match spans that don't have the key=value pair in either resource or span attributes
+						attrConds = append(attrConds, goqu.And(
+							// Resource attributes: key doesn't exist OR (key exists AND value is different)
+							goqu.Or(
+								goqu.L("NOT has(resource_attributes.key, ?)", attr.Key),
+								goqu.And(
+									goqu.L("has(resource_attributes.key, ?)", attr.Key),
+									goqu.L("NOT has(resource_attributes.value, ?)", attr.Value),
+								),
+							),
+							// Span attributes: key doesn't exist OR (key exists AND value is different)
+							goqu.Or(
+								goqu.L("NOT has(span_attributes.key, ?)", attr.Key),
+								goqu.And(
+									goqu.L("has(span_attributes.key, ?)", attr.Key),
+									goqu.L("NOT has(span_attributes.value, ?)", attr.Value),
+								),
+							),
+						))
+					}
+				}
+			}
+			// All attribute conditions must match (AND)
+			conds = append(conds, goqu.And(attrConds...))
+		} else {
+			// Fallback to original broad search
+			conds = append(conds, goqu.Or(
+				goqu.I("name").Eq(query),
+				goqu.I("scope_name").Eq(query),
+				goqu.I("trace_id").Eq(query),
+				goqu.I("span_id").Eq(query),
+				goqu.L("has(resource_attributes.key, ?)", query),
+				goqu.L("has(resource_attributes.value, ?)", query),
+				goqu.L("has(span_attributes.key, ?)", query),
+				goqu.L("has(span_attributes.value, ?)", query),
+			))
+		}
 	}
 
 	countDS := base.
