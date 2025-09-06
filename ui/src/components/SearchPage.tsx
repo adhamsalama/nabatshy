@@ -228,7 +228,7 @@ export const SearchPage: React.FC = () => {
         </FormControl>
         <TextField
           fullWidth
-          placeholder="Search..."
+          placeholder="service.name=auth,http.method!=GET"
           value={query}
           onChange={e => setQuery(e.target.value)}
           onKeyPress={handleKeyPress}
