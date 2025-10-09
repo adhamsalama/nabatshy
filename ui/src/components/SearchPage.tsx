@@ -11,22 +11,16 @@ import {
   Paper,
   Typography,
   CircularProgress,
-  Chip,
   IconButton,
-  Tooltip,
   Pagination,
   Select,
   MenuItem,
   FormControl,
   InputLabel,
   SelectChangeEvent,
-  Collapse,
   Button,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
-import InfoIcon from '@mui/icons-material/Info';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { format } from 'date-fns';
 import { useSearchParams } from 'react-router-dom';
@@ -75,7 +69,6 @@ export const SearchPage: React.FC = () => {
   const [sortField, setSortField] = useState<'start_time' | 'end_time' | 'duration'>('start_time');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [percentile, setPercentile] = useState<number>(95);
-  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [startDate, setStartDate] = useState(() => new Date(Date.now() - 5 * 60 * 1000));
   const [endDate, setEndDate] = useState(() => new Date());
 
@@ -204,12 +197,6 @@ export const SearchPage: React.FC = () => {
   const formatTimestamp = (ns: number) => format(new Date(ns / 1e6), 'yyyy-MM-dd HH:mm:ss.SSS');
   const formatDuration = (ms: number) => `${ms.toFixed(2)} ms`;
   const totalPages = searchResponse ? Math.ceil(searchResponse.totalCount / searchResponse.pageSize) : 0;
-  const toggleRow = (id: string) =>
-    setExpandedRows(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
 
   return (
     <Box sx={{ p: 3, display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 2 }}>
@@ -320,62 +307,24 @@ export const SearchPage: React.FC = () => {
                     <TableCell onClick={() => handleSortChange('end_time')} sx={{ cursor: 'pointer' }}>
                       End Time {sortField === 'end_time' && (sortOrder === 'asc' ? '↑' : '↓')}
                     </TableCell>
-                    <TableCell>Attributes</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {searchResponse?.results?.map((r, i) => {
-                    const rowId = `${r.TraceID}-${r.SpanID}-${i}`;
-                    const isExp = expandedRows.has(rowId);
-                    const hasA = Object.keys(r.ResourceAttrs).length > 0;
-                    return (
-                      <React.Fragment key={rowId}>
-                        <TableRow
-                          onClick={() => window.open(`/traces/${encodeURIComponent(r.TraceID)}`, '_blank')}
-                          sx={{ cursor: 'pointer', '&:hover': { backgroundColor: 'rgba(0,0,0,0.04)' } }}
-                        >
-                          <TableCell>{r.TraceID}</TableCell>
-                          <TableCell>{r.SpanID}</TableCell>
-                          <TableCell>{r.Name}</TableCell>
-                          <TableCell>{r.Service}</TableCell>
-                          <TableCell>{formatDuration(r.Duration)}</TableCell>
-                          <TableCell>{formatTimestamp(r.StartTime)}</TableCell>
-                          <TableCell>{formatTimestamp(r.StartTime + r.Duration * 1e6)}</TableCell>
-                          <TableCell>
-                            {hasA && (
-                              <Button
-                                size="small"
-                                onClick={e => {
-                                  e.stopPropagation();
-                                  toggleRow(rowId);
-                                }}
-                                endIcon={isExp ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                              >
-                                {isExp ? 'Hide' : 'Show'}
-                              </Button>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                        {hasA && (
-                          <TableRow>
-                            <TableCell colSpan={8} sx={{ p: 0 }}>
-                              <Collapse in={isExp} timeout="auto" unmountOnExit>
-                                <Box sx={{ p: 2, bgcolor: 'background.default' }}>
-                                  <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                                    {Object.entries(r.ResourceAttrs).map(([k, v]) => (
-                                      <Tooltip key={k} title={`${k}: ${v}`}>
-                                        <Chip size="small" label={`${k}: ${v}`} icon={<InfoIcon />} />
-                                      </Tooltip>
-                                    ))}
-                                  </Box>
-                                </Box>
-                              </Collapse>
-                            </TableCell>
-                          </TableRow>
-                        )}
-                      </React.Fragment>
-                    );
-                  })}
+                  {searchResponse?.results?.map((r, i) => (
+                    <TableRow
+                      key={`${r.TraceID}-${r.SpanID}-${i}`}
+                      onClick={() => window.open(`/traces/${encodeURIComponent(r.TraceID)}`, '_blank')}
+                      sx={{ cursor: 'pointer', '&:hover': { backgroundColor: 'rgba(0,0,0,0.04)' } }}
+                    >
+                      <TableCell>{r.TraceID}</TableCell>
+                      <TableCell>{r.SpanID}</TableCell>
+                      <TableCell>{r.Name}</TableCell>
+                      <TableCell>{r.Service}</TableCell>
+                      <TableCell>{formatDuration(r.Duration)}</TableCell>
+                      <TableCell>{formatTimestamp(r.StartTime)}</TableCell>
+                      <TableCell>{formatTimestamp(r.StartTime + r.Duration * 1e6)}</TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
             </TableContainer>
