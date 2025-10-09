@@ -1281,6 +1281,65 @@ func (s *TelemetryService) GetAvgDuration(
 	return series, nil
 }
 
+func (s *TelemetryService) GetErrorCounts(
+	ctx context.Context,
+	dateRange DateRange,
+) ([]TimeCount, error) {
+	startNano := dateRange.Start.UnixNano()
+	endNano := dateRange.End.UnixNano()
+	intervalSQL := GetIntervalFromDateRange(dateRange)
+
+	// Count spans that have exception events
+	query := fmt.Sprintf(`
+		SELECT
+			toStartOfInterval(
+				fromUnixTimestamp64Nano(start_time_unix_nano),
+				INTERVAL %s
+			) AS ts,
+			countIf(has(events.name, 'exception')) AS cnt
+		FROM denormalized_span
+		WHERE start_time_unix_nano >= %d AND start_time_unix_nano <= %d
+		GROUP BY ts
+		ORDER BY ts ASC
+	`, intervalSQL, startNano, endNano)
+
+	rows, err := (*s.Ch).Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("query error: %w", err)
+	}
+	defer rows.Close()
+
+	counts := make(map[time.Time]uint64)
+	for rows.Next() {
+		var ts time.Time
+		var cnt uint64
+		if err := rows.Scan(&ts, &cnt); err != nil {
+			return nil, fmt.Errorf("scan error: %w", err)
+		}
+		counts[ts] = cnt
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
+	}
+
+	intervalDur, err := ParseInterval(intervalSQL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid interval: %w", err)
+	}
+
+	alignedStart := AlignToInterval(dateRange.Start, intervalDur)
+
+	var result []TimeCount
+	for ts := alignedStart; !ts.After(dateRange.End); ts = ts.Add(intervalDur) {
+		result = append(result, TimeCount{
+			Timestamp: ts,
+			Value:     counts[ts],
+		})
+	}
+
+	return result, nil
+}
+
 // factor out your filtering/joining logic into one helper
 func (s *TelemetryService) baseSpanDS(query string, startNs, endNs int64) *goqu.SelectDataset {
 	ds := s.DB.

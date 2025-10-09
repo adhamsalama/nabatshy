@@ -33,6 +33,7 @@ import { useSearchParams } from 'react-router-dom';
 import PercentileChart, { TimePercentile } from './PercentileChart';
 import TraceCountChart from './TraceCountChart';
 import AvgDurationChart from './AvgDurationChart';
+import ErrorCountChart from './ErrorCountChart';
 import { config } from "../config.ts";
 
 interface SearchResult {
@@ -65,6 +66,7 @@ export const SearchPage: React.FC = () => {
   const [percentileSeries, setPercentileSeries] = useState<TimePercentile[]>([]);
   const [traceCountSeries, setTraceCountSeries] = useState<TimePercentile[]>([]);
   const [avgDurationSeries, setAvgDurationSeries] = useState<TimePercentile[]>([]);
+  const [errorCountSeries, setErrorCountSeries] = useState<TimePercentile[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
@@ -148,12 +150,24 @@ export const SearchPage: React.FC = () => {
       setAvgDurationSeries(data.avgDuration);
       setPage(pageNum);
       setTotalCount(data.totalCount);
+
+      // Fetch error count data separately
+      const errorUrl = new URL(`${config.backendUrl}/api/metrics/errors`);
+      errorUrl.searchParams.set('start', start.toISOString());
+      errorUrl.searchParams.set('end', end.toISOString());
+
+      const errorResponse = await fetch(errorUrl.toString());
+      if (errorResponse.ok) {
+        const errorData = await errorResponse.json();
+        setErrorCountSeries(errorData);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
       setSearchResponse(null);
       setPercentileSeries([]);
       setTraceCountSeries([]);
       setAvgDurationSeries([]);
+      setErrorCountSeries([]);
       setTotalCount(0);
     } finally {
       setLoading(false);
@@ -271,14 +285,17 @@ export const SearchPage: React.FC = () => {
             gap: 2,
           }}
         >
-          <Box sx={{ flex: '1 1 30%', minWidth: 300 }}>
+          <Box sx={{ flex: '1 1 45%', minWidth: 300 }}>
             <PercentileChart data={percentileSeries} percentile={percentile} />
           </Box>
-          <Box sx={{ flex: '1 1 30%', minWidth: 300 }}>
+          <Box sx={{ flex: '1 1 45%', minWidth: 300 }}>
             <TraceCountChart data={traceCountSeries} />
           </Box>
-          <Box sx={{ flex: '1 1 30%', minWidth: 300 }}>
+          <Box sx={{ flex: '1 1 45%', minWidth: 300 }}>
             <AvgDurationChart data={avgDurationSeries} />
+          </Box>
+          <Box sx={{ flex: '1 1 45%', minWidth: 300 }}>
+            <ErrorCountChart data={errorCountSeries} />
           </Box>
         </Box>
       )}
