@@ -147,12 +147,14 @@ type DenormalizedSpanRow struct {
 	ScopeName               string   `ch:"scope_name"`
 	ResourceID              string   `ch:"resource_id"`
 	ResourceSchemaURL       string   `ch:"resource_schema_url"`
-	ResourceAttributesKey   []string `ch:"resource_attributes.key"`
-	ResourceAttributesValue []string `ch:"resource_attributes.value"`
-	SpanAttributesKey       []string `ch:"span_attributes.key"`
-	SpanAttributesValue     []string `ch:"span_attributes.value"`
-	EventsTimeUnixNano      []int64  `ch:"events.time_unix_nano"`
-	EventsName              []string `ch:"events.name"`
+	ResourceAttributesKey      []string   `ch:"resource_attributes.key"`
+	ResourceAttributesValue    []string   `ch:"resource_attributes.value"`
+	SpanAttributesKey          []string   `ch:"span_attributes.key"`
+	SpanAttributesValue        []string   `ch:"span_attributes.value"`
+	EventsTimeUnixNano         []int64    `ch:"events.time_unix_nano"`
+	EventsName                 []string   `ch:"events.name"`
+	EventsAttributesKey        [][]string `ch:"events.attributes.key"`
+	EventsAttributesValue      [][]string `ch:"events.attributes.value"`
 }
 
 func InsertDenormalizedSpans(
@@ -189,9 +191,22 @@ func InsertDenormalizedSpans(
 		// Extract event data
 		eventTimes := make([]int64, len(span.Events))
 		eventNames := make([]string, len(span.Events))
+		eventAttrKeys := make([][]string, len(span.Events))
+		eventAttrValues := make([][]string, len(span.Events))
+
 		for i, event := range span.Events {
 			eventTimes[i] = event.TimeUnixNano
 			eventNames[i] = event.Name
+
+			// Extract event attributes
+			keys := make([]string, len(event.Attributes))
+			values := make([]string, len(event.Attributes))
+			for j, attr := range event.Attributes {
+				keys[j] = attr.Key
+				values[j] = attr.Value
+			}
+			eventAttrKeys[i] = keys
+			eventAttrValues[i] = values
 		}
 
 		row := DenormalizedSpanRow{
@@ -212,6 +227,8 @@ func InsertDenormalizedSpans(
 			SpanAttributesValue:     spanValues,
 			EventsTimeUnixNano:      eventTimes,
 			EventsName:              eventNames,
+			EventsAttributesKey:     eventAttrKeys,
+			EventsAttributesValue:   eventAttrValues,
 		}
 
 		if err := batch.AppendStruct(&row); err != nil {

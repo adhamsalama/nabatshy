@@ -111,10 +111,23 @@ func (s *TelemetryCollectorService) ingestTrace(req *coltrace.ExportTraceService
 				// Collect events for the span
 				var events []utils.Event
 				for _, e := range span.Events {
+					// Extract event attributes
+					eventAttrs := extractAttributes(e.Attributes)
+					var eventAttributes []utils.EventAttribute
+					for k, v := range eventAttrs {
+						eventAttributes = append(eventAttributes,
+							utils.EventAttribute{
+								Key:   k,
+								Value: v,
+							},
+						)
+					}
+
 					events = append(events,
 						utils.Event{
 							TimeUnixNano: int64(e.TimeUnixNano),
 							Name:         e.Name,
+							Attributes:   eventAttributes,
 						},
 					)
 				}

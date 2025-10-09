@@ -40,14 +40,21 @@ type ServiceTrace struct {
 	Duration float64 `db:"duration_ms"`
 }
 
+type SpanEvent struct {
+	TimeUnixNano int64             `json:"timeUnixNano"`
+	Name         string            `json:"name"`
+	Attributes   map[string]string `json:"attributes,omitempty"`
+}
+
 type TraceSpan struct {
-	SpanID       string  `db:"span_id"`
-	ParentSpanID string  `db:"parent_span_id"`
-	Name         string  `db:"name"`
-	Service      string  `db:"service_name"`
-	StartTime    int64   `db:"start_time_unix_nano"`
-	EndTime      int64   `db:"end_time_unix_nano"`
-	Duration     float64 `db:"duration_ms"`
+	SpanID       string      `db:"span_id"`
+	ParentSpanID string      `db:"parent_span_id"`
+	Name         string      `db:"name"`
+	Service      string      `db:"service_name"`
+	StartTime    int64       `db:"start_time_unix_nano"`
+	EndTime      int64       `db:"end_time_unix_nano"`
+	Duration     float64     `db:"duration_ms"`
+	Events       []SpanEvent `json:"events"`
 }
 
 type EndpointLatency struct {
@@ -90,6 +97,7 @@ type SpanDetail struct {
 	DurationDiff       float64           `db:"duration_diff_percent"`
 	ResourceAttributes map[string]string `json:"resourceAttributes"`
 	SpanAttributes     map[string]string `json:"spanAttributes"`
+	Events             []SpanEvent       `json:"events"`
 }
 
 type TraceList struct {
@@ -249,6 +257,10 @@ func (s *TelemetryService) GetTraceDetails(ctx context.Context, traceID string) 
 			goqu.C("start_time_unix_nano"),
 			goqu.C("end_time_unix_nano"),
 			goqu.L("duration_ns / 1000000").As("duration_ms"),
+			goqu.C("events.time_unix_nano").As("event_times"),
+			goqu.C("events.name").As("event_names"),
+			goqu.C("events.attributes.key").As("event_attr_keys"),
+			goqu.C("events.attributes.value").As("event_attr_values"),
 		).
 		Where(goqu.C("trace_id").Eq(traceID)).
 		Order(goqu.C("start_time_unix_nano").Asc())
@@ -267,9 +279,37 @@ func (s *TelemetryService) GetTraceDetails(ctx context.Context, traceID string) 
 	var spans []TraceSpan
 	for rows.Next() {
 		var s TraceSpan
-		if err := rows.Scan(&s.SpanID, &s.ParentSpanID, &s.Name, &s.Service, &s.StartTime, &s.EndTime, &s.Duration); err != nil {
+		var eventTimes []int64
+		var eventNames []string
+		var eventAttrKeys [][]string
+		var eventAttrValues [][]string
+
+		if err := rows.Scan(&s.SpanID, &s.ParentSpanID, &s.Name, &s.Service, &s.StartTime, &s.EndTime, &s.Duration, &eventTimes, &eventNames, &eventAttrKeys, &eventAttrValues); err != nil {
 			return nil, err
 		}
+
+		// Map events arrays to SpanEvent structs with attributes
+		s.Events = make([]SpanEvent, len(eventTimes))
+		for i := range eventTimes {
+			event := SpanEvent{
+				TimeUnixNano: eventTimes[i],
+				Name:         eventNames[i],
+			}
+
+			// Map event attributes
+			if i < len(eventAttrKeys) && i < len(eventAttrValues) {
+				attrs := make(map[string]string)
+				for j := range eventAttrKeys[i] {
+					if j < len(eventAttrValues[i]) {
+						attrs[eventAttrKeys[i][j]] = eventAttrValues[i][j]
+					}
+				}
+				event.Attributes = attrs
+			}
+
+			s.Events[i] = event
+		}
+
 		spans = append(spans, s)
 	}
 	return spans, rows.Err()
@@ -415,6 +455,10 @@ func (s *TelemetryService) GetSpanDetails(ctx context.Context, spanID string) (*
 			goqu.I("resource_attributes.value").As("resource_values"),
 			goqu.I("span_attributes.key").As("span_keys"),
 			goqu.I("span_attributes.value").As("span_values"),
+			goqu.C("events.time_unix_nano").As("event_times"),
+			goqu.C("events.name").As("event_names"),
+			goqu.C("events.attributes.key").As("event_attr_keys"),
+			goqu.C("events.attributes.value").As("event_attr_values"),
 		).
 		Where(goqu.I("span_id").Eq(spanID)).
 		GroupBy(
@@ -430,6 +474,10 @@ func (s *TelemetryService) GetSpanDetails(ctx context.Context, spanID string) (*
 			goqu.I("resource_attributes.value"),
 			goqu.I("span_attributes.key"),
 			goqu.I("span_attributes.value"),
+			goqu.C("events.time_unix_nano"),
+			goqu.C("events.name"),
+			goqu.C("events.attributes.key"),
+			goqu.C("events.attributes.value"),
 		)
 
 	sqlStr, args, err := ds.ToSQL()
@@ -449,6 +497,11 @@ func (s *TelemetryService) GetSpanDetails(ctx context.Context, spanID string) (*
 
 	var detail SpanDetail
 	var resourceKeys, resourceValues, spanKeys, spanValues []string
+	var eventTimes []int64
+	var eventNames []string
+	var eventAttrKeys [][]string
+	var eventAttrValues [][]string
+
 	if err := rows.Scan(
 		&detail.SpanID,
 		&detail.TraceID,
@@ -462,6 +515,10 @@ func (s *TelemetryService) GetSpanDetails(ctx context.Context, spanID string) (*
 		&resourceValues,
 		&spanKeys,
 		&spanValues,
+		&eventTimes,
+		&eventNames,
+		&eventAttrKeys,
+		&eventAttrValues,
 	); err != nil {
 		return nil, err
 	}
@@ -479,6 +536,28 @@ func (s *TelemetryService) GetSpanDetails(ctx context.Context, spanID string) (*
 		spanAttrs[spanKeys[i]] = spanValues[i]
 	}
 	detail.SpanAttributes = spanAttrs
+
+	// Map events with attributes
+	detail.Events = make([]SpanEvent, len(eventTimes))
+	for i := range eventTimes {
+		event := SpanEvent{
+			TimeUnixNano: eventTimes[i],
+			Name:         eventNames[i],
+		}
+
+		// Map event attributes
+		if i < len(eventAttrKeys) && i < len(eventAttrValues) {
+			attrs := make(map[string]string)
+			for j := range eventAttrKeys[i] {
+				if j < len(eventAttrValues[i]) {
+					attrs[eventAttrKeys[i][j]] = eventAttrValues[i][j]
+				}
+			}
+			event.Attributes = attrs
+		}
+
+		detail.Events[i] = event
+	}
 
 	// calculate avg durations of spans of the same name
 	avgDS := s.DB.

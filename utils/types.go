@@ -21,9 +21,15 @@ type ResourceAttribute struct {
 	Value string
 }
 
+type EventAttribute struct {
+	Key   string
+	Value string
+}
+
 type Event struct {
 	TimeUnixNano int64
 	Name         string
+	Attributes   []EventAttribute
 }
 
 type Span struct {
