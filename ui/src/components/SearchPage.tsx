@@ -37,6 +37,7 @@ interface SearchResult {
   Service: string;
   Duration: number;
   StartTime: number;
+  hasError: boolean;
   ResourceAttrs: Record<string, string>;
 }
 
@@ -314,7 +315,11 @@ export const SearchPage: React.FC = () => {
                     <TableRow
                       key={`${r.TraceID}-${r.SpanID}-${i}`}
                       onClick={() => window.open(`/traces/${encodeURIComponent(r.TraceID)}`, '_blank')}
-                      sx={{ cursor: 'pointer', '&:hover': { backgroundColor: 'rgba(0,0,0,0.04)' } }}
+                      sx={{
+                        cursor: 'pointer',
+                        backgroundColor: r.hasError ? 'rgba(244, 67, 54, 0.1)' : 'inherit',
+                        '&:hover': { backgroundColor: r.hasError ? 'rgba(244, 67, 54, 0.2)' : 'rgba(0,0,0,0.04)' }
+                      }}
                     >
                       <TableCell>{r.TraceID}</TableCell>
                       <TableCell>{r.SpanID}</TableCell>

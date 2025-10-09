@@ -117,6 +117,7 @@ type SearchResult struct {
 	Duration      float64 `db:"duration_ms"`
 	StartTime     int64   `db:"start_time_unix_nano"`
 	EndTime       int64   `db:"end_time_unix_nano"`
+	HasError      bool    `db:"has_error" json:"hasError"`
 	ResourceAttrs map[string]string
 }
 
@@ -813,6 +814,7 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 			goqu.L("duration_ns / 1000000").As("duration_ms"),
 			goqu.I("start_time_unix_nano"),
 			goqu.I("end_time_unix_nano"),
+			goqu.L("has(events.name, 'exception')").As("has_error"),
 			goqu.I("resource_attributes.key").As("resource_keys"),
 			goqu.I("resource_attributes.value").As("resource_values"),
 		).
@@ -880,6 +882,7 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 			&r.Duration,
 			&r.StartTime,
 			&r.EndTime,
+			&r.HasError,
 			&resourceKeys,
 			&resourceValues,
 		); err != nil {
