@@ -12,7 +12,7 @@ export interface SpanDetail {
   TraceID: string;
   ParentSpanID: string;
   Name: string;
-  Service: string;
+  Scope: string;
   StartTime: number;
   EndTime: number;
   Duration: number;
@@ -47,7 +47,7 @@ export const SpanDetails = ({ span }: { span?: SpanDetail | null }) => {
             <Typography><strong>Span ID:</strong> {span.SpanID}</Typography>
             <Typography><strong>Trace ID:</strong> {span.TraceID}</Typography>
             <Typography><strong>Parent Span ID:</strong> {span.ParentSpanID || '-'}</Typography>
-            <Typography><strong>Service:</strong> {span.Service}</Typography>
+            <Typography><strong>Scope:</strong> {span.Scope}</Typography>
           </Box>
           <Box flex={1} minWidth={250}>
             <Typography variant="subtitle1" gutterBottom>Timing Information</Typography>
@@ -81,10 +81,10 @@ export const SpanDetails = ({ span }: { span?: SpanDetail | null }) => {
                     <Typography variant="body2">
                       <strong>{key}:</strong> {
                         key === 'db.statement' ? (
-                          <Box component="pre" sx={{ 
-                            mt: 1, 
-                            p: 1, 
-                            background: '#f5f5f5', 
+                          <Box component="pre" sx={{
+                            mt: 1,
+                            p: 1,
+                            background: '#f5f5f5',
                             border: '1px solid #ddd',
                             borderRadius: '4px',
                             fontSize: '0.75rem',

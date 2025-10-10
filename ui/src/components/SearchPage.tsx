@@ -348,7 +348,7 @@ export const SearchPage: React.FC = () => {
                     <TableCell>Trace ID</TableCell>
                     <TableCell>Span ID</TableCell>
                     <TableCell>Name</TableCell>
-                    <TableCell>Service</TableCell>
+                    <TableCell>Scope</TableCell>
                     <TableCell onClick={() => handleSortChange('duration')} sx={{ cursor: 'pointer' }}>
                       Duration {sortField === 'duration' && (sortOrder === 'asc' ? '↑' : '↓')}
                     </TableCell>

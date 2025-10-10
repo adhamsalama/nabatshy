@@ -86,7 +86,7 @@ type SpanDetail struct {
 	TraceID            string            `db:"trace_id"`
 	ParentSpanID       string            `db:"parent_span_id"`
 	Name               string            `db:"name"`
-	Service            string            `db:"service_name"`
+	Scope              string            `db:"scope_name"`
 	StartTime          int64             `db:"start_time_unix_nano"`
 	EndTime            int64             `db:"end_time_unix_nano"`
 	Duration           float64           `db:"duration_ms"`
@@ -448,7 +448,7 @@ func (s *TelemetryService) GetSpanDetails(ctx context.Context, spanID string) (*
 			goqu.I("trace_id"),
 			goqu.I("parent_span_id"),
 			goqu.I("name"),
-			goqu.I("scope_name").As("service_name"),
+			goqu.I("scope_name"),
 			goqu.I("start_time_unix_nano"),
 			goqu.I("end_time_unix_nano"),
 			goqu.L("duration_ns / 1000000").As("duration_ms"),
@@ -508,7 +508,7 @@ func (s *TelemetryService) GetSpanDetails(ctx context.Context, spanID string) (*
 		&detail.TraceID,
 		&detail.ParentSpanID,
 		&detail.Name,
-		&detail.Service,
+		&detail.Scope,
 		&detail.StartTime,
 		&detail.EndTime,
 		&detail.Duration,
@@ -725,8 +725,8 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 					case "!=":
 						attrConds = append(attrConds, goqu.I("name").Neq(attr.Value))
 					}
-				case "service", "service.name":
-					// Handle special "service" or "service.name" key for service name matching
+				case "scope":
+					// Handle special "scope" key for scope name matching
 					switch attr.Operator {
 					case "=":
 						attrConds = append(attrConds, goqu.I("scope_name").Eq(attr.Value))
