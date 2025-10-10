@@ -823,18 +823,11 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 	queryString, _, _ := ds.ToSQL()
 	intervalSQL := GetIntervalFromDateRange(dateRange)
 
-	pResult, pErr := s.getPercentileForQuery(ctx, queryString, intervalSQL, dateRange, percentile)
-	if pErr != nil {
-		return nil, pErr
+	metrics, metricsErr := s.getCombinedMetricsForQuery(ctx, queryString, intervalSQL, dateRange, percentile)
+	if metricsErr != nil {
+		return nil, metricsErr
 	}
-	tcResult, tcErr := s.getTraceCountForQuery(ctx, queryString, intervalSQL, dateRange)
-	if tcErr != nil {
-		return nil, tcErr
-	}
-	avgResult, avgErr := s.getAverageDurationForQuery(ctx, queryString, intervalSQL, dateRange)
-	if avgErr != nil {
-		return nil, avgErr
-	}
+
 	switch sort.Field {
 	case "start_time":
 		if sort.Order == "asc" {
@@ -901,41 +894,10 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 		TotalCount:         totalCount,
 		Page:               page,
 		PageSize:           pageSize,
-		PercentileResults:  pResult,
-		TraceCountResults:  tcResult,
-		AvgDurationResults: avgResult,
+		PercentileResults:  metrics.PercentileResults,
+		TraceCountResults:  metrics.TraceCountResults,
+		AvgDurationResults: metrics.AvgDurationResults,
 	}, rows.Err()
-}
-
-func (s *TelemetryService) getPercentileForQuery(ctx context.Context, queryString string, intervalSQL string, dateRange DateRange, percentile int) ([]TimePercentile, error) {
-	pFloat := float64(percentile) / 100.0
-
-	pSeriesQuery := fmt.Sprintf(`
-		WITH stats as (
-			%s
-		)
-      SELECT
-            toStartOfInterval(
-                toDateTime(stats.start_time_unix_nano / 1e9),
-                INTERVAL %s
-            ) AS ts,
-            quantile(%f)(
-                (stats.end_time_unix_nano - stats.start_time_unix_nano) / 1000000
-            ) AS pvalue
-        FROM stats
-        GROUP BY ts
-        ORDER BY ts		`, queryString, intervalSQL, pFloat)
-
-	pRows, err := (*s.Ch).Query(ctx, pSeriesQuery)
-	if err != nil {
-		return nil, fmt.Errorf("query error: %w", err)
-	}
-	defer pRows.Close()
-	pResult, pErr := PadQueryResult(pRows, intervalSQL, dateRange)
-	if pErr != nil {
-		panic(pErr)
-	}
-	return pResult, nil
 }
 
 type TimeCount struct {
@@ -1375,48 +1337,26 @@ func (s *TelemetryService) baseSpanDS(query string, startNs, endNs int64) *goqu.
 
 // getTraceCountForQuery mirrors getPercentileForQuery but returns counts per interval
 
-func (s *TelemetryService) getTraceCountForQuery(
-	ctx context.Context,
-	queryString string,
-	intervalSQL string,
-	dateRange DateRange,
-) ([]TimePercentile, error) {
-	cSeriesQuery := fmt.Sprintf(`
-        WITH stats AS (
-            %s
-        )
-        SELECT
-            toStartOfInterval(
-                toDateTime(stats.start_time_unix_nano / 1e9),
-                INTERVAL %s
-            ) AS ts,
-            count() / 1.0 AS cnt
-        FROM stats
-        GROUP BY ts
-        ORDER BY ts
-    `, queryString, intervalSQL)
-
-	cRows, err := (*s.Ch).Query(ctx, cSeriesQuery)
-	if err != nil {
-		return nil, fmt.Errorf("query error: %w", err)
-	}
-	defer cRows.Close()
-
-	// Pad missing intervals with zero counts
-	cResult, padErr := PadQueryResult(cRows, intervalSQL, dateRange)
-	if padErr != nil {
-		return nil, padErr
-	}
-	return cResult, nil
+// CombinedMetricsResult holds the results of all three metrics queries
+type CombinedMetricsResult struct {
+	PercentileResults  []TimePercentile
+	TraceCountResults  []TimePercentile
+	AvgDurationResults []TimePercentile
 }
 
-func (s *TelemetryService) getAverageDurationForQuery(
+// getCombinedMetricsForQuery executes a single combined query that computes
+// percentile, trace count, and average duration all at once, improving performance
+// by eliminating redundant CTE evaluations and reducing network round trips
+func (s *TelemetryService) getCombinedMetricsForQuery(
 	ctx context.Context,
 	queryString string,
 	intervalSQL string,
 	dateRange DateRange,
-) ([]TimePercentile, error) {
-	avgSeriesQuery := fmt.Sprintf(`
+	percentile int,
+) (*CombinedMetricsResult, error) {
+	pFloat := float64(percentile) / 100.0
+
+	combinedQuery := fmt.Sprintf(`
 		WITH stats AS (
 			%s
 		)
@@ -1425,25 +1365,72 @@ func (s *TelemetryService) getAverageDurationForQuery(
 				toDateTime(stats.start_time_unix_nano / 1e9),
 				INTERVAL %s
 			) AS ts,
-			avg(
-				(stats.end_time_unix_nano - stats.start_time_unix_nano) / 1000000
-			) AS pvalue
+			quantile(%f)((stats.end_time_unix_nano - stats.start_time_unix_nano) / 1000000) AS percentile_value,
+			count() / 1.0 AS trace_count,
+			avg((stats.end_time_unix_nano - stats.start_time_unix_nano) / 1000000) AS avg_duration
 		FROM stats
 		GROUP BY ts
 		ORDER BY ts
-	`, queryString, intervalSQL)
+	`, queryString, intervalSQL, pFloat)
 
-	rows, err := (*s.Ch).Query(ctx, avgSeriesQuery)
+	rows, err := (*s.Ch).Query(ctx, combinedQuery)
 	if err != nil {
 		return nil, fmt.Errorf("query error: %w", err)
 	}
 	defer rows.Close()
 
-	result, padErr := PadQueryResult(rows, intervalSQL, dateRange)
-	if padErr != nil {
-		return nil, fmt.Errorf("pad error: %w", padErr)
+	// Collect results from the combined query
+	percentileMap := make(map[time.Time]float64)
+	traceCountMap := make(map[time.Time]float64)
+	avgDurationMap := make(map[time.Time]float64)
+
+	for rows.Next() {
+		var ts time.Time
+		var pValue, tcValue, avgValue float64
+		if err := rows.Scan(&ts, &pValue, &tcValue, &avgValue); err != nil {
+			return nil, fmt.Errorf("scan error: %w", err)
+		}
+		percentileMap[ts] = pValue
+		traceCountMap[ts] = tcValue
+		avgDurationMap[ts] = avgValue
 	}
-	return result, nil
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
+	}
+
+	// Parse interval and align timestamps
+	intervalDur, err := ParseInterval(intervalSQL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid interval: %w", err)
+	}
+
+	alignedStart := AlignToInterval(dateRange.Start, intervalDur)
+
+	// Build padded series for all three metrics
+	var percentileResult []TimePercentile
+	var traceCountResult []TimePercentile
+	var avgDurationResult []TimePercentile
+
+	for ts := alignedStart; !ts.After(dateRange.End); ts = ts.Add(intervalDur) {
+		percentileResult = append(percentileResult, TimePercentile{
+			Timestamp: ts,
+			Value:     percentileMap[ts],
+		})
+		traceCountResult = append(traceCountResult, TimePercentile{
+			Timestamp: ts,
+			Value:     traceCountMap[ts],
+		})
+		avgDurationResult = append(avgDurationResult, TimePercentile{
+			Timestamp: ts,
+			Value:     avgDurationMap[ts],
+		})
+	}
+
+	return &CombinedMetricsResult{
+		PercentileResults:  percentileResult,
+		TraceCountResults:  traceCountResult,
+		AvgDurationResults: avgDurationResult,
+	}, nil
 }
 
 // GetUniqueServiceNames returns a list of all unique service names
@@ -1478,3 +1465,4 @@ func (s *TelemetryService) GetUniqueServiceNames(ctx context.Context) ([]string,
 
 	return services, nil
 }
+
