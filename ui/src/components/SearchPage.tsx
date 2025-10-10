@@ -24,10 +24,8 @@ import SearchIcon from '@mui/icons-material/Search';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { format } from 'date-fns';
 import { useSearchParams } from 'react-router-dom';
-import PercentileChart, { TimePercentile } from './PercentileChart';
 import TraceCountChart from './TraceCountChart';
-import AvgDurationChart from './AvgDurationChart';
-import ErrorCountChart from './ErrorCountChart';
+import { TimePercentile } from './PercentileChart';
 import { config } from "../config.ts";
 
 interface SearchResult {
@@ -46,22 +44,15 @@ interface SearchResponse {
   totalCount: number;
   page: number;
   pageSize: number;
-  percentile: TimePercentile[];
   traceCount: TimePercentile[];
-  avgDuration: TimePercentile[];
 }
-
-const percentileOptions = [50, 75, 90, 95, 99, 100] as const;
 
 export const SearchPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [query, setQuery] = useState('');
   const [searchResponse, setSearchResponse] = useState<SearchResponse | null>(null);
-  const [percentileSeries, setPercentileSeries] = useState<TimePercentile[]>([]);
   const [traceCountSeries, setTraceCountSeries] = useState<TimePercentile[]>([]);
-  const [avgDurationSeries, setAvgDurationSeries] = useState<TimePercentile[]>([]);
-  const [errorCountSeries, setErrorCountSeries] = useState<TimePercentile[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
@@ -69,7 +60,6 @@ export const SearchPage: React.FC = () => {
   const [totalCount, setTotalCount] = useState(0);
   const [sortField, setSortField] = useState<'start_time' | 'end_time' | 'duration'>('start_time');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [percentile, setPercentile] = useState<number>(95);
   const [startDate, setStartDate] = useState(() => new Date(Date.now() - 5 * 60 * 1000));
   const [endDate, setEndDate] = useState(() => new Date());
   const [selectedService, setSelectedService] = useState<string>('');
@@ -99,7 +89,6 @@ export const SearchPage: React.FC = () => {
     const so = searchParams.get('sortOrder') as typeof sortOrder;
     const pg = parseInt(searchParams.get('page') || '1');
     const sz = parseInt(searchParams.get('pageSize') || '20');
-    const perc = percentile ?? parseInt(searchParams.get('percentile') ?? percentile);
     const svc = searchParams.get('service') ?? '';
 
     setQuery(q);
@@ -109,12 +98,11 @@ export const SearchPage: React.FC = () => {
     if (so) setSortOrder(so);
     if (!isNaN(pg)) setPage(pg);
     if (!isNaN(sz)) setPageSize(sz);
-    if (!isNaN(perc)) setPercentile(perc);
     if (svc) setSelectedService(svc);
 
-    handleSearch(pg, q, sz, sf, so, start ? new Date(start) : startDate, end ? new Date(end) : endDate, perc, svc);
+    handleSearch(pg, q, sz, sf, so, start ? new Date(start) : startDate, end ? new Date(end) : endDate, svc);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [percentile]);
+  }, []);
 
 
   const handleSearch = async (
@@ -125,11 +113,8 @@ export const SearchPage: React.FC = () => {
     so = sortOrder,
     start = startDate,
     end = endDate,
-    perc = percentile,
     service = selectedService
   ) => {
-    const effectivePercentile = perc ?? percentile;
-
     if (!start || !end || isNaN(start.getTime()) || isNaN(end.getTime())) {
       setError('Invalid start or end date');
       return;
@@ -150,7 +135,6 @@ export const SearchPage: React.FC = () => {
       sortOrder: so,
       start: start.toISOString(),
       end: end.toISOString(),
-      percentile: String(effectivePercentile),
     };
     if (service) {
       params.service = service;
@@ -170,29 +154,13 @@ export const SearchPage: React.FC = () => {
       }
       const data: SearchResponse = await response.json();
       setSearchResponse(data);
-      setPercentileSeries(data.percentile);
       setTraceCountSeries(data.traceCount);
-      setAvgDurationSeries(data.avgDuration);
       setPage(pageNum);
       setTotalCount(data.totalCount);
-
-      // Fetch error count data separately
-      const errorUrl = new URL(`${config.backendUrl}/api/metrics/errors`);
-      errorUrl.searchParams.set('start', start.toISOString());
-      errorUrl.searchParams.set('end', end.toISOString());
-
-      const errorResponse = await fetch(errorUrl.toString());
-      if (errorResponse.ok) {
-        const errorData = await errorResponse.json();
-        setErrorCountSeries(errorData);
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
       setSearchResponse(null);
-      setPercentileSeries([]);
       setTraceCountSeries([]);
-      setAvgDurationSeries([]);
-      setErrorCountSeries([]);
       setTotalCount(0);
     } finally {
       setLoading(false);
@@ -229,7 +197,7 @@ export const SearchPage: React.FC = () => {
   const handleServiceChange = (e: SelectChangeEvent<string>) => {
     const newService = e.target.value;
     setSelectedService(newService);
-    handleSearch(1, query, pageSize, sortField, sortOrder, startDate, endDate, percentile, newService);
+    handleSearch(1, query, pageSize, sortField, sortOrder, startDate, endDate, newService);
   };
 
   const formatTimestamp = (ns: number) => format(new Date(ns / 1e6), 'yyyy-MM-dd HH:mm:ss.SSS');
@@ -253,18 +221,6 @@ export const SearchPage: React.FC = () => {
           onChange={e => setEndDate(new Date(e.target.value))}
           InputLabelProps={{ shrink: true }}
         />
-        <FormControl size="small" sx={{ minWidth: 120 }}>
-          <InputLabel>Percentile</InputLabel>
-          <Select
-            value={percentile}
-            label="Percentile"
-            onChange={e => setPercentile(Number(e.target.value))}
-          >
-            {percentileOptions.map(p => (
-              <MenuItem key={`p${p}`} value={p}>{`P${p}`}</MenuItem>
-            ))}
-          </Select>
-        </FormControl>
         <FormControl size="small" sx={{ minWidth: 200 }}>
           <InputLabel>Service</InputLabel>
           <Select
@@ -314,27 +270,8 @@ export const SearchPage: React.FC = () => {
       )}
 
       {!loading && searchResponse && (
-        <Box
-          sx={{
-            gridColumn: 'span 12',
-            display: 'flex',
-            flexWrap: 'wrap',
-            justifyContent: 'space-between',
-            gap: 2,
-          }}
-        >
-          <Box sx={{ flex: '1 1 45%', minWidth: 300 }}>
-            <PercentileChart data={percentileSeries} percentile={percentile} />
-          </Box>
-          <Box sx={{ flex: '1 1 45%', minWidth: 300 }}>
-            <TraceCountChart data={traceCountSeries} />
-          </Box>
-          <Box sx={{ flex: '1 1 45%', minWidth: 300 }}>
-            <AvgDurationChart data={avgDurationSeries} />
-          </Box>
-          <Box sx={{ flex: '1 1 45%', minWidth: 300 }}>
-            <ErrorCountChart data={errorCountSeries} />
-          </Box>
+        <Box sx={{ gridColumn: 'span 12' }}>
+          <TraceCountChart data={traceCountSeries} />
         </Box>
       )}
 
