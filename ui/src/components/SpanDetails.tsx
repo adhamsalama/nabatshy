@@ -1,4 +1,11 @@
-import { Container, Typography, Paper, Box, Chip } from '@mui/material';
+import { Container, Typography, Paper, Box, Chip, Alert, AlertTitle } from '@mui/material';
+import ErrorIcon from '@mui/icons-material/Error';
+
+interface SpanEvent {
+  timeUnixNano: number;
+  name: string;
+  attributes?: Record<string, string>;
+}
 
 export interface SpanDetail {
   SpanID: string;
@@ -16,6 +23,7 @@ export interface SpanDetail {
   DurationDiff?: number;
   resourceAttributes?: Record<string, string>;
   spanAttributes?: Record<string, string>;
+  events?: SpanEvent[];
 }
 
 export const SpanDetails = ({ span }: { span?: SpanDetail | null }) => {
@@ -109,7 +117,55 @@ export const SpanDetails = ({ span }: { span?: SpanDetail | null }) => {
             </Paper>
           </Box>
         )}
+        {span.events && span.events.length > 0 && (
+          <Box mt={3}>
+            <Typography variant="subtitle1" gutterBottom>Events</Typography>
+            {span.events.map((event, idx) => {
+              const isException = event.name === 'exception';
+              return (
+                <Alert
+                  key={idx}
+                  severity={isException ? 'error' : 'info'}
+                  icon={isException ? <ErrorIcon /> : undefined}
+                  sx={{ mb: 2 }}
+                >
+                  <AlertTitle>
+                    {event.name} - {new Date(event.timeUnixNano / 1000000).toISOString()}
+                  </AlertTitle>
+                  {event.attributes && Object.keys(event.attributes).length > 0 && (
+                    <Box mt={1}>
+                      {Object.entries(event.attributes).map(([key, value]) => (
+                        <Box key={key} mb={1}>
+                          <Typography variant="body2">
+                            <strong>{key}:</strong>
+                            {key === 'exception.stacktrace' ? (
+                              <Box component="pre" sx={{
+                                mt: 1,
+                                p: 1,
+                                background: 'rgba(0, 0, 0, 0.05)',
+                                border: '1px solid rgba(0, 0, 0, 0.1)',
+                                borderRadius: '4px',
+                                fontSize: '0.75rem',
+                                overflow: 'auto',
+                                whiteSpace: 'pre-wrap',
+                                wordBreak: 'break-word'
+                              }}>
+                                {value}
+                              </Box>
+                            ) : (
+                              <span> {value}</span>
+                            )}
+                          </Typography>
+                        </Box>
+                      ))}
+                    </Box>
+                  )}
+                </Alert>
+              );
+            })}
+          </Box>
+        )}
       </Paper>
     </Container>
   );
-}; 
+};

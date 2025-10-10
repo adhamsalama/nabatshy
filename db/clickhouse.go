@@ -98,7 +98,11 @@ CREATE TABLE denormalized_span (
     resource_schema_url String, -- From the `resource` table
     resource_attributes Nested (key String, value String), -- From the `resource_attributes` table
     span_attributes Nested (key String, value String), -- Span-level attributes (db.statement, etc.)
-    events Nested (time_unix_nano Int64, name String), -- From the `event` table
+    events Nested (
+        time_unix_nano Int64,
+        name String,
+        attributes Nested (key Array(String), value Array(String))
+    ),
     PRIMARY KEY (trace_id, span_id)
 ) ENGINE = MergeTree
 ORDER BY (trace_id, span_id);

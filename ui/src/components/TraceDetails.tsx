@@ -11,10 +11,19 @@ import {
   TableHead,
   TableRow,
   CircularProgress,
-  Box
+  Box,
+  Chip,
+  Tooltip
 } from '@mui/material';
+import ErrorIcon from '@mui/icons-material/Error';
 import { SpanDetails, SpanDetail } from './SpanDetails';
 import { config } from "../config.ts";
+
+interface SpanEvent {
+  timeUnixNano: number;
+  name: string;
+  attributes?: Record<string, string>;
+}
 
 interface TraceSpan {
   SpanID: string;
@@ -29,6 +38,7 @@ interface TraceSpan {
   P90Duration?: number;
   P99Duration?: number;
   DurationDiff?: number;
+  events: SpanEvent[];
 }
 
 export const TraceDetails = () => {
@@ -96,6 +106,21 @@ export const TraceDetails = () => {
 
   const totalDuration = Math.max(...spans.map(s => s.Duration));
 
+  const hasError = (span: TraceSpan) => {
+    return span.events?.some(event => event.name === 'exception') || false;
+  };
+
+  const getExceptionDetails = (span: TraceSpan): string | null => {
+    const exceptionEvent = span.events?.find(event => event.name === 'exception');
+    if (!exceptionEvent?.attributes) return null;
+
+    const type = exceptionEvent.attributes['exception.type'] || 'Error';
+    const message = exceptionEvent.attributes['exception.message'] || 'Unknown error';
+    const stacktrace = exceptionEvent.attributes['exception.stacktrace'];
+
+    return `${type}: ${message}${stacktrace ? '\n\nStack trace:\n' + stacktrace : ''}`;
+  };
+
   return (
     <Container>
       <Typography variant="h5" gutterBottom>
@@ -105,6 +130,7 @@ export const TraceDetails = () => {
         <Table>
           <TableHead>
             <TableRow>
+              <TableCell>Status</TableCell>
               <TableCell>Span ID</TableCell>
               <TableCell>Parent Span ID</TableCell>
               <TableCell>Name</TableCell>
@@ -120,8 +146,31 @@ export const TraceDetails = () => {
               <TableRow
                 key={span.SpanID}
                 onClick={() => setSelectedSpan(span)}
-                sx={{ cursor: 'pointer', '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.04)' } }}
+                sx={{
+                  cursor: 'pointer',
+                  '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.04)' },
+                  backgroundColor: hasError(span) ? 'rgba(239, 68, 68, 0.05)' : 'inherit'
+                }}
               >
+                <TableCell>
+                  {hasError(span) && (
+                    <Tooltip
+                      title={
+                        <Box sx={{ whiteSpace: 'pre-wrap', maxWidth: 400 }}>
+                          {getExceptionDetails(span) || 'Exception occurred'}
+                        </Box>
+                      }
+                      arrow
+                    >
+                      <Chip
+                        icon={<ErrorIcon />}
+                        label="Error"
+                        color="error"
+                        size="small"
+                      />
+                    </Tooltip>
+                  )}
+                </TableCell>
                 <TableCell>{span.SpanID}</TableCell>
                 <TableCell>{span.ParentSpanID || '-'}</TableCell>
                 <TableCell>{span.Name}</TableCell>
@@ -153,8 +202,13 @@ export const TraceDetails = () => {
   );
 };
 
-const TraceDurationBars = ({ spans, onSpanClick, selectedSpanId }: { spans: any[], onSpanClick?: (span: any) => void, selectedSpanId?: string }) => {
+const TraceDurationBars = ({ spans, onSpanClick, selectedSpanId }: { spans: TraceSpan[], onSpanClick?: (span: TraceSpan) => void, selectedSpanId?: string }) => {
   const rootSpan = spans[0];
+
+  const hasError = (span: TraceSpan) => {
+    return span.events?.some(event => event.name === 'exception') || false;
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {spans.map((item) => {
@@ -163,8 +217,12 @@ const TraceDurationBars = ({ spans, onSpanClick, selectedSpanId }: { spans: any[
         const thisDuration = item.EndTime - item.StartTime;
         const widthPct = thisDuration / restOfLineDuration * 100;
         const percentage = item.Duration / rootSpan.Duration * 100;
+        const itemHasError = hasError(item);
+
         let backgroundColor = '#4f46e5';
-        if (percentage >= 75) {
+        if (itemHasError) {
+          backgroundColor = '#dc2626'; // Red for errors
+        } else if (percentage >= 75) {
           backgroundColor = '#dc2626'
         }
         else if (percentage >= 50) {
@@ -184,7 +242,7 @@ const TraceDurationBars = ({ spans, onSpanClick, selectedSpanId }: { spans: any[
             borderRadius: 4,
             overflow: 'hidden',
             cursor: 'pointer',
-            border: isSelected ? '2px solid #6366f1' : '2px solid transparent',
+            border: isSelected ? '2px solid #6366f1' : itemHasError ? '2px solid #dc2626' : '2px solid transparent',
           }}
           onClick={() => onSpanClick && onSpanClick(item)}
         >
@@ -212,6 +270,7 @@ const TraceDurationBars = ({ spans, onSpanClick, selectedSpanId }: { spans: any[
               whiteSpace: 'nowrap',
             }}
           >
+            {itemHasError && '⚠️ '}
             {item.Name} ({item.Duration.toFixed(2)} ms, {percentage.toFixed(2)}%)
           </div>
         </div>

@@ -316,6 +316,24 @@ func (c *TelemetryController) getAvgDuration(w http.ResponseWriter, r *http.Requ
 	json.NewEncoder(w).Encode(series)
 }
 
+func (c *TelemetryController) getErrorCounts(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	dr, err := ParseDateRange(q, "start", "end", "timeRange")
+	if err != nil {
+		http.Error(w, "invalid date range", http.StatusBadRequest)
+		return
+	}
+
+	counts, err := c.service.GetErrorCounts(r.Context(), dr)
+	if err != nil {
+		http.Error(w, "failed to get error counts", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(counts)
+}
+
 func (c *TelemetryController) RegisterRoutes(r chi.Router) {
 	r.Get("/v1/traces/slowest", c.getTopNSlowestTraces)
 	r.Get("/v1/traces/service/{service}", c.getServiceTraces)
@@ -331,4 +349,5 @@ func (c *TelemetryController) RegisterRoutes(r chi.Router) {
 	r.Get("/api/metrics/endpoints", c.getEndpointMetrics)
 	r.Get("/api/metrics/pseries", c.getPMetrics)
 	r.Get("/api/metrics/avg", c.getAvgDuration)
+	r.Get("/api/metrics/errors", c.getErrorCounts)
 }
