@@ -334,6 +334,17 @@ func (c *TelemetryController) getErrorCounts(w http.ResponseWriter, r *http.Requ
 	json.NewEncoder(w).Encode(counts)
 }
 
+func (c *TelemetryController) getUniqueServiceNames(w http.ResponseWriter, r *http.Request) {
+	services, err := c.service.GetUniqueServiceNames(r.Context())
+	if err != nil {
+		http.Error(w, "failed to get service names", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(services)
+}
+
 func (c *TelemetryController) RegisterRoutes(r chi.Router) {
 	r.Get("/v1/traces/slowest", c.getTopNSlowestTraces)
 	r.Get("/v1/traces/service/{service}", c.getServiceTraces)
@@ -350,4 +361,5 @@ func (c *TelemetryController) RegisterRoutes(r chi.Router) {
 	r.Get("/api/metrics/pseries", c.getPMetrics)
 	r.Get("/api/metrics/avg", c.getAvgDuration)
 	r.Get("/api/metrics/errors", c.getErrorCounts)
+	r.Get("/api/services", c.getUniqueServiceNames)
 }

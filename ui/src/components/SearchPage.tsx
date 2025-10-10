@@ -72,6 +72,24 @@ export const SearchPage: React.FC = () => {
   const [percentile, setPercentile] = useState<number>(95);
   const [startDate, setStartDate] = useState(() => new Date(Date.now() - 5 * 60 * 1000));
   const [endDate, setEndDate] = useState(() => new Date());
+  const [selectedService, setSelectedService] = useState<string>('');
+  const [availableServices, setAvailableServices] = useState<string[]>([]);
+
+  // Fetch available services on mount
+  useEffect(() => {
+    const fetchServices = async () => {
+      try {
+        const response = await fetch(`${config.backendUrl}/api/services`);
+        if (response.ok) {
+          const services = await response.json();
+          setAvailableServices(services || []);
+        }
+      } catch (err) {
+        console.error('Failed to fetch services:', err);
+      }
+    };
+    fetchServices();
+  }, []);
 
   useEffect(() => {
     const q = searchParams.get('query') ?? '';
@@ -82,6 +100,7 @@ export const SearchPage: React.FC = () => {
     const pg = parseInt(searchParams.get('page') || '1');
     const sz = parseInt(searchParams.get('pageSize') || '20');
     const perc = percentile ?? parseInt(searchParams.get('percentile') ?? percentile);
+    const svc = searchParams.get('service') ?? '';
 
     setQuery(q);
     if (start) setStartDate(new Date(start));
@@ -91,8 +110,9 @@ export const SearchPage: React.FC = () => {
     if (!isNaN(pg)) setPage(pg);
     if (!isNaN(sz)) setPageSize(sz);
     if (!isNaN(perc)) setPercentile(perc);
+    if (svc) setSelectedService(svc);
 
-    handleSearch(pg, q, sz, sf, so, start ? new Date(start) : startDate, end ? new Date(end) : endDate, perc);
+    handleSearch(pg, q, sz, sf, so, start ? new Date(start) : startDate, end ? new Date(end) : endDate, perc, svc);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [percentile]);
 
@@ -105,7 +125,8 @@ export const SearchPage: React.FC = () => {
     so = sortOrder,
     start = startDate,
     end = endDate,
-    perc = percentile
+    perc = percentile,
+    service = selectedService
   ) => {
     const effectivePercentile = perc ?? percentile;
 
@@ -114,8 +135,15 @@ export const SearchPage: React.FC = () => {
       return;
     }
 
+    // Automatically append service filter to query if a service is selected
+    let effectiveQuery = q;
+    if (service) {
+      const serviceFilter = `service.name=${service}`;
+      effectiveQuery = q ? `${serviceFilter},${q}` : serviceFilter;
+    }
+
     const params: Record<string, string> = {
-      query: q,
+      query: effectiveQuery,
       page: String(pageNum),
       pageSize: String(size),
       sortField: sf,
@@ -124,6 +152,9 @@ export const SearchPage: React.FC = () => {
       end: end.toISOString(),
       percentile: String(effectivePercentile),
     };
+    if (service) {
+      params.service = service;
+    }
     setSearchParams(params);
     setLoading(true);
     setError(null);
@@ -195,6 +226,12 @@ export const SearchPage: React.FC = () => {
     }
   };
 
+  const handleServiceChange = (e: SelectChangeEvent<string>) => {
+    const newService = e.target.value;
+    setSelectedService(newService);
+    handleSearch(1, query, pageSize, sortField, sortOrder, startDate, endDate, percentile, newService);
+  };
+
   const formatTimestamp = (ns: number) => format(new Date(ns / 1e6), 'yyyy-MM-dd HH:mm:ss.SSS');
   const formatDuration = (ms: number) => `${ms.toFixed(2)} ms`;
   const totalPages = searchResponse ? Math.ceil(searchResponse.totalCount / searchResponse.pageSize) : 0;
@@ -228,9 +265,22 @@ export const SearchPage: React.FC = () => {
             ))}
           </Select>
         </FormControl>
+        <FormControl size="small" sx={{ minWidth: 200 }}>
+          <InputLabel>Service</InputLabel>
+          <Select
+            value={selectedService}
+            label="Service"
+            onChange={handleServiceChange}
+          >
+            <MenuItem value="">All Services</MenuItem>
+            {availableServices.map(service => (
+              <MenuItem key={service} value={service}>{service}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
         <TextField
           fullWidth
-          placeholder="service.name=auth,http.method!=GET"
+          placeholder="http.method!=GET,name=GetUser"
           value={query}
           onChange={e => setQuery(e.target.value)}
           onKeyPress={handleKeyPress}

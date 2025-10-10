@@ -1445,3 +1445,36 @@ func (s *TelemetryService) getAverageDurationForQuery(
 	}
 	return result, nil
 }
+
+// GetUniqueServiceNames returns a list of all unique service names
+func (s *TelemetryService) GetUniqueServiceNames(ctx context.Context) ([]string, error) {
+	query := `
+		SELECT DISTINCT arrayElement(resource_attributes.value, indexOf(resource_attributes.key, 'service.name')) AS service_name
+		FROM denormalized_span
+		WHERE has(resource_attributes.key, 'service.name')
+		ORDER BY service_name
+	`
+
+	rows, err := (*s.Ch).Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("query error: %w", err)
+	}
+	defer rows.Close()
+
+	var services []string
+	for rows.Next() {
+		var serviceName string
+		if err := rows.Scan(&serviceName); err != nil {
+			return nil, fmt.Errorf("scan error: %w", err)
+		}
+		if serviceName != "" {
+			services = append(services, serviceName)
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
+	}
+
+	return services, nil
+}
