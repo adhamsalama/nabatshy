@@ -12,7 +12,6 @@ import {
   Typography,
   CircularProgress,
   IconButton,
-  Pagination,
   Select,
   MenuItem,
   FormControl,
@@ -24,10 +23,8 @@ import SearchIcon from '@mui/icons-material/Search';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { format } from 'date-fns';
 import { useSearchParams } from 'react-router-dom';
-import PercentileChart, { TimePercentile } from './PercentileChart';
 import TraceCountChart from './TraceCountChart';
-import AvgDurationChart from './AvgDurationChart';
-import ErrorCountChart from './ErrorCountChart';
+import { TimePercentile } from './PercentileChart';
 import { config } from "../config.ts";
 
 interface SearchResult {
@@ -43,35 +40,42 @@ interface SearchResult {
 
 interface SearchResponse {
   results?: SearchResult[];
-  totalCount: number;
   page: number;
   pageSize: number;
-  percentile: TimePercentile[];
-  traceCount: TimePercentile[];
-  avgDuration: TimePercentile[];
 }
-
-const percentileOptions = [50, 75, 90, 95, 99, 100] as const;
 
 export const SearchPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [query, setQuery] = useState('');
   const [searchResponse, setSearchResponse] = useState<SearchResponse | null>(null);
-  const [percentileSeries, setPercentileSeries] = useState<TimePercentile[]>([]);
   const [traceCountSeries, setTraceCountSeries] = useState<TimePercentile[]>([]);
-  const [avgDurationSeries, setAvgDurationSeries] = useState<TimePercentile[]>([]);
-  const [errorCountSeries, setErrorCountSeries] = useState<TimePercentile[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
-  const [totalCount, setTotalCount] = useState(0);
   const [sortField, setSortField] = useState<'start_time' | 'end_time' | 'duration'>('start_time');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [percentile, setPercentile] = useState<number>(95);
   const [startDate, setStartDate] = useState(() => new Date(Date.now() - 5 * 60 * 1000));
   const [endDate, setEndDate] = useState(() => new Date());
+  const [selectedService, setSelectedService] = useState<string>('');
+  const [availableServices, setAvailableServices] = useState<string[]>([]);
+
+  // Fetch available services on mount
+  useEffect(() => {
+    const fetchServices = async () => {
+      try {
+        const response = await fetch(`${config.backendUrl}/api/services`);
+        if (response.ok) {
+          const services = await response.json();
+          setAvailableServices(services || []);
+        }
+      } catch (err) {
+        console.error('Failed to fetch services:', err);
+      }
+    };
+    fetchServices();
+  }, []);
 
   useEffect(() => {
     const q = searchParams.get('query') ?? '';
@@ -81,7 +85,7 @@ export const SearchPage: React.FC = () => {
     const so = searchParams.get('sortOrder') as typeof sortOrder;
     const pg = parseInt(searchParams.get('page') || '1');
     const sz = parseInt(searchParams.get('pageSize') || '20');
-    const perc = percentile ?? parseInt(searchParams.get('percentile') ?? percentile);
+    const svc = searchParams.get('service') ?? '';
 
     setQuery(q);
     if (start) setStartDate(new Date(start));
@@ -90,11 +94,11 @@ export const SearchPage: React.FC = () => {
     if (so) setSortOrder(so);
     if (!isNaN(pg)) setPage(pg);
     if (!isNaN(sz)) setPageSize(sz);
-    if (!isNaN(perc)) setPercentile(perc);
+    if (svc) setSelectedService(svc);
 
-    handleSearch(pg, q, sz, sf, so, start ? new Date(start) : startDate, end ? new Date(end) : endDate, perc);
+    handleSearch(pg, q, sz, sf, so, start ? new Date(start) : startDate, end ? new Date(end) : endDate, svc);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [percentile]);
+  }, []);
 
 
   const handleSearch = async (
@@ -105,64 +109,69 @@ export const SearchPage: React.FC = () => {
     so = sortOrder,
     start = startDate,
     end = endDate,
-    perc = percentile
+    service = selectedService
   ) => {
-    const effectivePercentile = perc ?? percentile;
-
     if (!start || !end || isNaN(start.getTime()) || isNaN(end.getTime())) {
       setError('Invalid start or end date');
       return;
     }
 
+    // Automatically append service filter to query if a service is selected
+    let effectiveQuery = q;
+    if (service) {
+      const serviceFilter = `service.name=${service}`;
+      effectiveQuery = q ? `${serviceFilter},${q}` : serviceFilter;
+    }
+
     const params: Record<string, string> = {
-      query: q,
+      query: effectiveQuery,
       page: String(pageNum),
       pageSize: String(size),
       sortField: sf,
       sortOrder: so,
       start: start.toISOString(),
       end: end.toISOString(),
-      percentile: String(effectivePercentile),
     };
+    if (service) {
+      params.service = service;
+    }
     setSearchParams(params);
     setLoading(true);
     setError(null);
 
     try {
-      const url = new URL(`${config.backendUrl}/v1/search`);
-      Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+      // Fetch search results
+      const searchUrl = new URL(`${config.backendUrl}/v1/search`);
+      Object.entries(params).forEach(([k, v]) => searchUrl.searchParams.set(k, v));
 
-      const response = await fetch(url.toString());
-      if (!response.ok) {
-        const errText = await response.text();
+      const searchResponse = await fetch(searchUrl.toString());
+      if (!searchResponse.ok) {
+        const errText = await searchResponse.text();
         throw new Error(`Search failed: ${errText}`);
       }
-      const data: SearchResponse = await response.json();
-      setSearchResponse(data);
-      setPercentileSeries(data.percentile);
-      setTraceCountSeries(data.traceCount);
-      setAvgDurationSeries(data.avgDuration);
+      const searchData: SearchResponse = await searchResponse.json();
+      setSearchResponse(searchData);
       setPage(pageNum);
-      setTotalCount(data.totalCount);
 
-      // Fetch error count data separately
-      const errorUrl = new URL(`${config.backendUrl}/api/metrics/errors`);
-      errorUrl.searchParams.set('start', start.toISOString());
-      errorUrl.searchParams.set('end', end.toISOString());
+      // Fetch metrics separately
+      const metricsUrl = new URL(`${config.backendUrl}/api/metrics/search`);
+      metricsUrl.searchParams.set('query', effectiveQuery);
+      metricsUrl.searchParams.set('start', start.toISOString());
+      metricsUrl.searchParams.set('end', end.toISOString());
 
-      const errorResponse = await fetch(errorUrl.toString());
-      if (errorResponse.ok) {
-        const errorData = await errorResponse.json();
-        setErrorCountSeries(errorData);
+      const metricsResponse = await fetch(metricsUrl.toString());
+      if (metricsResponse.ok) {
+        const metricsData = await metricsResponse.json();
+        setTraceCountSeries(metricsData.TraceCountResults || []);
+      } else {
+        // Don't fail the entire search if metrics fail
+        console.error('Failed to fetch metrics:', await metricsResponse.text());
+        setTraceCountSeries([]);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
       setSearchResponse(null);
-      setPercentileSeries([]);
       setTraceCountSeries([]);
-      setAvgDurationSeries([]);
-      setErrorCountSeries([]);
-      setTotalCount(0);
     } finally {
       setLoading(false);
     }
@@ -170,11 +179,6 @@ export const SearchPage: React.FC = () => {
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') handleSearch(1);
-  };
-
-  const handlePageChange = (_: React.ChangeEvent<unknown>, v: number) => {
-    setPage(v);
-    handleSearch(v);
   };
 
   const handlePageSizeChange = (e: SelectChangeEvent<number>) => {
@@ -195,9 +199,17 @@ export const SearchPage: React.FC = () => {
     }
   };
 
+  const handleServiceChange = (e: SelectChangeEvent<string>) => {
+    const newService = e.target.value;
+    setSelectedService(newService);
+    handleSearch(1, query, pageSize, sortField, sortOrder, startDate, endDate, newService);
+  };
+
   const formatTimestamp = (ns: number) => format(new Date(ns / 1e6), 'yyyy-MM-dd HH:mm:ss.SSS');
   const formatDuration = (ms: number) => `${ms.toFixed(2)} ms`;
-  const totalPages = searchResponse ? Math.ceil(searchResponse.totalCount / searchResponse.pageSize) : 0;
+  // Show pagination with reasonable max (user can navigate as needed)
+  const hasResults = (searchResponse?.results?.length ?? 0) > 0;
+  const hasMorePages = hasResults && searchResponse!.results!.length >= pageSize;
 
   return (
     <Box sx={{ p: 3, display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 2 }}>
@@ -216,21 +228,22 @@ export const SearchPage: React.FC = () => {
           onChange={e => setEndDate(new Date(e.target.value))}
           InputLabelProps={{ shrink: true }}
         />
-        <FormControl size="small" sx={{ minWidth: 120 }}>
-          <InputLabel>Percentile</InputLabel>
+        <FormControl size="small" sx={{ minWidth: 200 }}>
+          <InputLabel>Service</InputLabel>
           <Select
-            value={percentile}
-            label="Percentile"
-            onChange={e => setPercentile(Number(e.target.value))}
+            value={selectedService}
+            label="Service"
+            onChange={handleServiceChange}
           >
-            {percentileOptions.map(p => (
-              <MenuItem key={`p${p}`} value={p}>{`P${p}`}</MenuItem>
+            <MenuItem value="">All Services</MenuItem>
+            {availableServices.map(service => (
+              <MenuItem key={service} value={service}>{service}</MenuItem>
             ))}
           </Select>
         </FormControl>
         <TextField
           fullWidth
-          placeholder="service.name=auth,http.method!=GET"
+          placeholder="http.method!=GET,name=GetUser"
           value={query}
           onChange={e => setQuery(e.target.value)}
           onKeyPress={handleKeyPress}
@@ -264,27 +277,8 @@ export const SearchPage: React.FC = () => {
       )}
 
       {!loading && searchResponse && (
-        <Box
-          sx={{
-            gridColumn: 'span 12',
-            display: 'flex',
-            flexWrap: 'wrap',
-            justifyContent: 'space-between',
-            gap: 2,
-          }}
-        >
-          <Box sx={{ flex: '1 1 45%', minWidth: 300 }}>
-            <PercentileChart data={percentileSeries} percentile={percentile} />
-          </Box>
-          <Box sx={{ flex: '1 1 45%', minWidth: 300 }}>
-            <TraceCountChart data={traceCountSeries} />
-          </Box>
-          <Box sx={{ flex: '1 1 45%', minWidth: 300 }}>
-            <AvgDurationChart data={avgDurationSeries} />
-          </Box>
-          <Box sx={{ flex: '1 1 45%', minWidth: 300 }}>
-            <ErrorCountChart data={errorCountSeries} />
-          </Box>
+        <Box sx={{ gridColumn: 'span 12' }}>
+          <TraceCountChart data={traceCountSeries} />
         </Box>
       )}
 
@@ -298,7 +292,7 @@ export const SearchPage: React.FC = () => {
                     <TableCell>Trace ID</TableCell>
                     <TableCell>Span ID</TableCell>
                     <TableCell>Name</TableCell>
-                    <TableCell>Service</TableCell>
+                    <TableCell>Scope</TableCell>
                     <TableCell onClick={() => handleSortChange('duration')} sx={{ cursor: 'pointer' }}>
                       Duration {sortField === 'duration' && (sortOrder === 'asc' ? '↑' : '↓')}
                     </TableCell>
@@ -355,10 +349,19 @@ export const SearchPage: React.FC = () => {
               </Select>
             </FormControl>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Typography>
-                Showing {(page - 1) * pageSize + 1} to {Math.min(page * pageSize, totalCount)} of {totalCount} results
-              </Typography>
-              <Pagination count={totalPages} page={page} onChange={handlePageChange} />
+              <Button
+                disabled={page <= 1}
+                onClick={() => handleSearch(page - 1)}
+              >
+                Previous
+              </Button>
+              <Typography>Page {page}</Typography>
+              <Button
+                disabled={!hasMorePages}
+                onClick={() => handleSearch(page + 1)}
+              >
+                Next
+              </Button>
             </Box>
           </Box>
         </>

@@ -334,6 +334,55 @@ func (c *TelemetryController) getErrorCounts(w http.ResponseWriter, r *http.Requ
 	json.NewEncoder(w).Encode(counts)
 }
 
+func (c *TelemetryController) getSearchMetrics(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query().Get("query")
+	percentileStr := r.URL.Query().Get("percentile")
+	percentile := 95
+	if percentileStr != "" {
+		p, err := strconv.Atoi(percentileStr)
+		if err == nil {
+			percentile = p
+		}
+	}
+
+	var dateRange DateRange
+	startStr := r.URL.Query().Get("start")
+	endStr := r.URL.Query().Get("end")
+	if startStr != "" && endStr != "" {
+		startTime, err1 := time.Parse(time.RFC3339, startStr)
+		endTime, err2 := time.Parse(time.RFC3339, endStr)
+		if err1 == nil && err2 == nil {
+			dateRange = DateRange{Start: startTime, End: endTime}
+		} else {
+			http.Error(w, "invalid start or end time format", http.StatusBadRequest)
+			return
+		}
+	} else {
+		timeRange := r.URL.Query().Get("timeRange")
+		dateRange = GetDateRangeFromQuery(timeRange)
+	}
+
+	metrics, err := c.service.GetSearchMetrics(r.Context(), dateRange, query, percentile)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to get search metrics: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(metrics)
+}
+
+func (c *TelemetryController) getUniqueServiceNames(w http.ResponseWriter, r *http.Request) {
+	services, err := c.service.GetUniqueServiceNames(r.Context())
+	if err != nil {
+		http.Error(w, "failed to get service names", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(services)
+}
+
 func (c *TelemetryController) RegisterRoutes(r chi.Router) {
 	r.Get("/v1/traces/slowest", c.getTopNSlowestTraces)
 	r.Get("/v1/traces/service/{service}", c.getServiceTraces)
@@ -350,4 +399,6 @@ func (c *TelemetryController) RegisterRoutes(r chi.Router) {
 	r.Get("/api/metrics/pseries", c.getPMetrics)
 	r.Get("/api/metrics/avg", c.getAvgDuration)
 	r.Get("/api/metrics/errors", c.getErrorCounts)
+	r.Get("/api/metrics/search", c.getSearchMetrics)
+	r.Get("/api/services", c.getUniqueServiceNames)
 }

@@ -86,7 +86,7 @@ type SpanDetail struct {
 	TraceID            string            `db:"trace_id"`
 	ParentSpanID       string            `db:"parent_span_id"`
 	Name               string            `db:"name"`
-	Service            string            `db:"service_name"`
+	Scope              string            `db:"scope_name"`
 	StartTime          int64             `db:"start_time_unix_nano"`
 	EndTime            int64             `db:"end_time_unix_nano"`
 	Duration           float64           `db:"duration_ms"`
@@ -122,13 +122,9 @@ type SearchResult struct {
 }
 
 type SearchResponse struct {
-	Results            []SearchResult   `json:"results"`
-	TotalCount         uint64           `json:"totalCount"`
-	Page               int              `json:"page"`
-	PageSize           int              `json:"pageSize"`
-	PercentileResults  []TimePercentile `json:"percentile"`
-	TraceCountResults  []TimePercentile `json:"traceCount"`
-	AvgDurationResults []TimePercentile `json:"avgDuration"`
+	Results  []SearchResult `json:"results"`
+	Page     int            `json:"page"`
+	PageSize int            `json:"pageSize"`
 }
 
 type SortOption struct {
@@ -448,7 +444,7 @@ func (s *TelemetryService) GetSpanDetails(ctx context.Context, spanID string) (*
 			goqu.I("trace_id"),
 			goqu.I("parent_span_id"),
 			goqu.I("name"),
-			goqu.I("scope_name").As("service_name"),
+			goqu.I("scope_name"),
 			goqu.I("start_time_unix_nano"),
 			goqu.I("end_time_unix_nano"),
 			goqu.L("duration_ns / 1000000").As("duration_ms"),
@@ -508,7 +504,7 @@ func (s *TelemetryService) GetSpanDetails(ctx context.Context, spanID string) (*
 		&detail.TraceID,
 		&detail.ParentSpanID,
 		&detail.Name,
-		&detail.Service,
+		&detail.Scope,
 		&detail.StartTime,
 		&detail.EndTime,
 		&detail.Duration,
@@ -700,6 +696,11 @@ func parseAttributeQuery(query string) []AttributeQuery {
 }
 
 func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange, query string, page, pageSize int, sort SortOption, percentile int) (*SearchResponse, error) {
+	totalStart := time.Now()
+	defer func() {
+		fmt.Printf("[SearchTraces] Total function time: %v\n", time.Since(totalStart))
+	}()
+
 	startNano := dateRange.Start.UnixNano()
 	endNano := dateRange.End.UnixNano()
 
@@ -725,8 +726,8 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 					case "!=":
 						attrConds = append(attrConds, goqu.I("name").Neq(attr.Value))
 					}
-				case "service", "service.name":
-					// Handle special "service" or "service.name" key for service name matching
+				case "scope":
+					// Handle special "scope" key for scope name matching
 					switch attr.Operator {
 					case "=":
 						attrConds = append(attrConds, goqu.I("scope_name").Eq(attr.Value))
@@ -788,21 +789,6 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 		}
 	}
 
-	countDS := base.
-		Select(goqu.L("count(DISTINCT trace_id, span_id)").As("count")).
-		Where(conds...)
-
-	countSQL, countArgs, err := countDS.ToSQL()
-	if err != nil {
-		return nil, err
-	}
-
-	var totalCount uint64
-	err = (*s.Ch).QueryRow(ctx, countSQL, countArgs...).Scan(&totalCount)
-	if err != nil {
-		return nil, err
-	}
-
 	offset := (page - 1) * pageSize
 
 	ds := base.
@@ -820,21 +806,6 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 		).
 		Where(conds...)
 
-	queryString, _, _ := ds.ToSQL()
-	intervalSQL := GetIntervalFromDateRange(dateRange)
-
-	pResult, pErr := s.getPercentileForQuery(ctx, queryString, intervalSQL, dateRange, percentile)
-	if pErr != nil {
-		return nil, pErr
-	}
-	tcResult, tcErr := s.getTraceCountForQuery(ctx, queryString, intervalSQL, dateRange)
-	if tcErr != nil {
-		return nil, tcErr
-	}
-	avgResult, avgErr := s.getAverageDurationForQuery(ctx, queryString, intervalSQL, dateRange)
-	if avgErr != nil {
-		return nil, avgErr
-	}
 	switch sort.Field {
 	case "start_time":
 		if sort.Order == "asc" {
@@ -864,7 +835,10 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 		return nil, err
 	}
 
+	resultsStart := time.Now()
 	rows, err := (*s.Ch).Query(ctx, sqlStr, args...)
+	resultsDuration := time.Since(resultsStart)
+	fmt.Printf("[SearchTraces] Results query took: %v\n", resultsDuration)
 	if err != nil {
 		return nil, err
 	}
@@ -897,45 +871,10 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 	}
 
 	return &SearchResponse{
-		Results:            results,
-		TotalCount:         totalCount,
-		Page:               page,
-		PageSize:           pageSize,
-		PercentileResults:  pResult,
-		TraceCountResults:  tcResult,
-		AvgDurationResults: avgResult,
+		Results:  results,
+		Page:     page,
+		PageSize: pageSize,
 	}, rows.Err()
-}
-
-func (s *TelemetryService) getPercentileForQuery(ctx context.Context, queryString string, intervalSQL string, dateRange DateRange, percentile int) ([]TimePercentile, error) {
-	pFloat := float64(percentile) / 100.0
-
-	pSeriesQuery := fmt.Sprintf(`
-		WITH stats as (
-			%s
-		)
-      SELECT
-            toStartOfInterval(
-                toDateTime(stats.start_time_unix_nano / 1e9),
-                INTERVAL %s
-            ) AS ts,
-            quantile(%f)(
-                (stats.end_time_unix_nano - stats.start_time_unix_nano) / 1000000
-            ) AS pvalue
-        FROM stats
-        GROUP BY ts
-        ORDER BY ts		`, queryString, intervalSQL, pFloat)
-
-	pRows, err := (*s.Ch).Query(ctx, pSeriesQuery)
-	if err != nil {
-		return nil, fmt.Errorf("query error: %w", err)
-	}
-	defer pRows.Close()
-	pResult, pErr := PadQueryResult(pRows, intervalSQL, dateRange)
-	if pErr != nil {
-		panic(pErr)
-	}
-	return pResult, nil
 }
 
 type TimeCount struct {
@@ -1375,48 +1314,26 @@ func (s *TelemetryService) baseSpanDS(query string, startNs, endNs int64) *goqu.
 
 // getTraceCountForQuery mirrors getPercentileForQuery but returns counts per interval
 
-func (s *TelemetryService) getTraceCountForQuery(
-	ctx context.Context,
-	queryString string,
-	intervalSQL string,
-	dateRange DateRange,
-) ([]TimePercentile, error) {
-	cSeriesQuery := fmt.Sprintf(`
-        WITH stats AS (
-            %s
-        )
-        SELECT
-            toStartOfInterval(
-                toDateTime(stats.start_time_unix_nano / 1e9),
-                INTERVAL %s
-            ) AS ts,
-            count() / 1.0 AS cnt
-        FROM stats
-        GROUP BY ts
-        ORDER BY ts
-    `, queryString, intervalSQL)
-
-	cRows, err := (*s.Ch).Query(ctx, cSeriesQuery)
-	if err != nil {
-		return nil, fmt.Errorf("query error: %w", err)
-	}
-	defer cRows.Close()
-
-	// Pad missing intervals with zero counts
-	cResult, padErr := PadQueryResult(cRows, intervalSQL, dateRange)
-	if padErr != nil {
-		return nil, padErr
-	}
-	return cResult, nil
+// CombinedMetricsResult holds the results of all three metrics queries
+type CombinedMetricsResult struct {
+	PercentileResults  []TimePercentile
+	TraceCountResults  []TimePercentile
+	AvgDurationResults []TimePercentile
 }
 
-func (s *TelemetryService) getAverageDurationForQuery(
+// getCombinedMetricsForQuery executes a single combined query that computes
+// percentile, trace count, and average duration all at once, improving performance
+// by eliminating redundant CTE evaluations and reducing network round trips
+func (s *TelemetryService) getCombinedMetricsForQuery(
 	ctx context.Context,
 	queryString string,
 	intervalSQL string,
 	dateRange DateRange,
-) ([]TimePercentile, error) {
-	avgSeriesQuery := fmt.Sprintf(`
+	percentile int,
+) (*CombinedMetricsResult, error) {
+	pFloat := float64(percentile) / 100.0
+
+	combinedQuery := fmt.Sprintf(`
 		WITH stats AS (
 			%s
 		)
@@ -1425,23 +1342,207 @@ func (s *TelemetryService) getAverageDurationForQuery(
 				toDateTime(stats.start_time_unix_nano / 1e9),
 				INTERVAL %s
 			) AS ts,
-			avg(
-				(stats.end_time_unix_nano - stats.start_time_unix_nano) / 1000000
-			) AS pvalue
+			quantile(%f)((stats.end_time_unix_nano - stats.start_time_unix_nano) / 1000000) AS percentile_value,
+			count() / 1.0 AS trace_count,
+			avg((stats.end_time_unix_nano - stats.start_time_unix_nano) / 1000000) AS avg_duration
 		FROM stats
 		GROUP BY ts
 		ORDER BY ts
-	`, queryString, intervalSQL)
+	`, queryString, intervalSQL, pFloat)
 
-	rows, err := (*s.Ch).Query(ctx, avgSeriesQuery)
+	queryStart := time.Now()
+	rows, err := (*s.Ch).Query(ctx, combinedQuery)
+	queryDuration := time.Since(queryStart)
+	fmt.Printf("[getCombinedMetricsForQuery] ClickHouse query took: %v\n", queryDuration)
 	if err != nil {
 		return nil, fmt.Errorf("query error: %w", err)
 	}
 	defer rows.Close()
 
-	result, padErr := PadQueryResult(rows, intervalSQL, dateRange)
-	if padErr != nil {
-		return nil, fmt.Errorf("pad error: %w", padErr)
+	// Collect results from the combined query
+	percentileMap := make(map[time.Time]float64)
+	traceCountMap := make(map[time.Time]float64)
+	avgDurationMap := make(map[time.Time]float64)
+
+	for rows.Next() {
+		var ts time.Time
+		var pValue, tcValue, avgValue float64
+		if err := rows.Scan(&ts, &pValue, &tcValue, &avgValue); err != nil {
+			return nil, fmt.Errorf("scan error: %w", err)
+		}
+		percentileMap[ts] = pValue
+		traceCountMap[ts] = tcValue
+		avgDurationMap[ts] = avgValue
 	}
-	return result, nil
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
+	}
+
+	// Parse interval and align timestamps
+	intervalDur, err := ParseInterval(intervalSQL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid interval: %w", err)
+	}
+
+	alignedStart := AlignToInterval(dateRange.Start, intervalDur)
+
+	// Build padded series for all three metrics
+	var percentileResult []TimePercentile
+	var traceCountResult []TimePercentile
+	var avgDurationResult []TimePercentile
+
+	for ts := alignedStart; !ts.After(dateRange.End); ts = ts.Add(intervalDur) {
+		percentileResult = append(percentileResult, TimePercentile{
+			Timestamp: ts,
+			Value:     percentileMap[ts],
+		})
+		traceCountResult = append(traceCountResult, TimePercentile{
+			Timestamp: ts,
+			Value:     traceCountMap[ts],
+		})
+		avgDurationResult = append(avgDurationResult, TimePercentile{
+			Timestamp: ts,
+			Value:     avgDurationMap[ts],
+		})
+	}
+
+	return &CombinedMetricsResult{
+		PercentileResults:  percentileResult,
+		TraceCountResults:  traceCountResult,
+		AvgDurationResults: avgDurationResult,
+	}, nil
+}
+
+// GetSearchMetrics returns metrics (percentile, trace count, avg duration) for a search query
+func (s *TelemetryService) GetSearchMetrics(ctx context.Context, dateRange DateRange, query string, percentile int) (*CombinedMetricsResult, error) {
+	startNano := dateRange.Start.UnixNano()
+	endNano := dateRange.End.UnixNano()
+
+	base := s.DB.From(goqu.T("denormalized_span"))
+
+	conds := []goqu.Expression{
+		goqu.I("start_time_unix_nano").Gte(startNano),
+		goqu.I("end_time_unix_nano").Lte(endNano),
+	}
+
+	if query != "" {
+		// Try to parse as attribute query first
+		if attrs := parseAttributeQuery(query); attrs != nil {
+			// Build AND conditions for each key=value or key!=value pair
+			var attrConds []goqu.Expression
+			for _, attr := range attrs {
+				// Handle special "name" key for span name matching
+				switch attr.Key {
+				case "name":
+					switch attr.Operator {
+					case "=":
+						attrConds = append(attrConds, goqu.I("name").Eq(attr.Value))
+					case "!=":
+						attrConds = append(attrConds, goqu.I("name").Neq(attr.Value))
+					}
+				case "scope":
+					// Handle special "scope" key for scope name matching
+					switch attr.Operator {
+					case "=":
+						attrConds = append(attrConds, goqu.I("scope_name").Eq(attr.Value))
+					case "!=":
+						attrConds = append(attrConds, goqu.I("scope_name").Neq(attr.Value))
+					}
+				default:
+					// Handle regular attribute searches
+					switch attr.Operator {
+					case "=":
+						// Equals: match spans that have this exact key=value pair
+						attrConds = append(attrConds, goqu.Or(
+							goqu.And(
+								goqu.L("has(resource_attributes.key, ?)", attr.Key),
+								goqu.L("has(resource_attributes.value, ?)", attr.Value),
+							),
+							goqu.And(
+								goqu.L("has(span_attributes.key, ?)", attr.Key),
+								goqu.L("has(span_attributes.value, ?)", attr.Value),
+							),
+						))
+					case "!=":
+						// Not equals: match spans that don't have the key=value pair in either resource or span attributes
+						attrConds = append(attrConds, goqu.And(
+							// Resource attributes: key doesn't exist OR (key exists AND value is different)
+							goqu.Or(
+								goqu.L("NOT has(resource_attributes.key, ?)", attr.Key),
+								goqu.And(
+									goqu.L("has(resource_attributes.key, ?)", attr.Key),
+									goqu.L("NOT has(resource_attributes.value, ?)", attr.Value),
+								),
+							),
+							// Span attributes: key doesn't exist OR (key exists AND value is different)
+							goqu.Or(
+								goqu.L("NOT has(span_attributes.key, ?)", attr.Key),
+								goqu.And(
+									goqu.L("has(span_attributes.key, ?)", attr.Key),
+									goqu.L("NOT has(span_attributes.value, ?)", attr.Value),
+								),
+							),
+						))
+					}
+				}
+			}
+			// All attribute conditions must match (AND)
+			conds = append(conds, goqu.And(attrConds...))
+		} else {
+			// Fallback to original broad search
+			conds = append(conds, goqu.Or(
+				goqu.I("name").Eq(query),
+				goqu.I("scope_name").Eq(query),
+				goqu.I("trace_id").Eq(query),
+				goqu.I("span_id").Eq(query),
+				goqu.L("has(resource_attributes.key, ?)", query),
+				goqu.L("has(resource_attributes.value, ?)", query),
+				goqu.L("has(span_attributes.key, ?)", query),
+				goqu.L("has(span_attributes.value, ?)", query),
+			))
+		}
+	}
+
+	ds := base.Select(
+		goqu.I("start_time_unix_nano"),
+		goqu.I("end_time_unix_nano"),
+	).Where(conds...)
+
+	queryString, _, _ := ds.ToSQL()
+	intervalSQL := GetIntervalFromDateRange(dateRange)
+
+	return s.getCombinedMetricsForQuery(ctx, queryString, intervalSQL, dateRange, percentile)
+}
+
+// GetUniqueServiceNames returns a list of all unique service names
+func (s *TelemetryService) GetUniqueServiceNames(ctx context.Context) ([]string, error) {
+	query := `
+		SELECT DISTINCT arrayElement(resource_attributes.value, indexOf(resource_attributes.key, 'service.name')) AS service_name
+		FROM denormalized_span
+		WHERE has(resource_attributes.key, 'service.name')
+		ORDER BY service_name
+	`
+
+	rows, err := (*s.Ch).Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("query error: %w", err)
+	}
+	defer rows.Close()
+
+	var services []string
+	for rows.Next() {
+		var serviceName string
+		if err := rows.Scan(&serviceName); err != nil {
+			return nil, fmt.Errorf("scan error: %w", err)
+		}
+		if serviceName != "" {
+			services = append(services, serviceName)
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
+	}
+
+	return services, nil
 }

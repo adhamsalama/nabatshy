@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import { TraceDetails } from './components/TraceDetails';
 import { SpanDetails } from './components/SpanDetails';
 import { SearchPage } from './components/SearchPage';
+import { MonitoringPage } from './components/MonitoringPage';
 import logo from '../../docs/assets/logo.png'; // adjust path if needed
 
 function App() {
@@ -27,6 +28,9 @@ function App() {
               />
             </Typography>
           </Box>
+          <Button color="inherit" component={Link} to="/monitoring">
+            Monitoring
+          </Button>
           <Button color="inherit" component={Link} to="/search">
             Search
           </Button>
@@ -38,6 +42,7 @@ function App() {
           <Route path="/traces/:traceId" element={<TraceDetails />} />
           <Route path="/spans/:spanId" element={<SpanDetails />} />
           <Route path="/search" element={<SearchPage />} />
+          <Route path="/monitoring" element={<MonitoringPage />} />
         </Routes>
       </Container>
     </Router>
