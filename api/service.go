@@ -695,7 +695,7 @@ func parseAttributeQuery(query string) []AttributeQuery {
 	return nil
 }
 
-func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange, query string, page, pageSize int, sort SortOption, percentile int) (*SearchResponse, error) {
+func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange, query string, page, pageSize int, sort SortOption, traceOrSpan string) (*SearchResponse, error) {
 	totalStart := time.Now()
 	defer func() {
 		fmt.Printf("[SearchTraces] Total function time: %v\n", time.Since(totalStart))
@@ -786,6 +786,20 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 				goqu.L("has(span_attributes.key, ?)", query),
 				goqu.L("has(span_attributes.value, ?)", query),
 			))
+		}
+	}
+	switch traceOrSpan {
+	case "trace":
+		{
+			conds = append(conds,
+				goqu.I("parent_span_id").Eq(""),
+			)
+		}
+	case "span":
+		{
+			conds = append(conds,
+				goqu.I("parent_span_id").Neq(""),
+			)
 		}
 	}
 
@@ -1414,7 +1428,7 @@ func (s *TelemetryService) getCombinedMetricsForQuery(
 }
 
 // GetSearchMetrics returns metrics (percentile, trace count, avg duration) for a search query
-func (s *TelemetryService) GetSearchMetrics(ctx context.Context, dateRange DateRange, query string, percentile int) (*CombinedMetricsResult, error) {
+func (s *TelemetryService) GetSearchMetrics(ctx context.Context, dateRange DateRange, query string, percentile int, traceOrSpan string) (*CombinedMetricsResult, error) {
 	startNano := dateRange.Start.UnixNano()
 	endNano := dateRange.End.UnixNano()
 
@@ -1501,6 +1515,14 @@ func (s *TelemetryService) GetSearchMetrics(ctx context.Context, dateRange DateR
 				goqu.L("has(span_attributes.value, ?)", query),
 			))
 		}
+	}
+
+	// Add traceOrSpan filter
+	switch traceOrSpan {
+	case "trace":
+		conds = append(conds, goqu.I("parent_span_id").Eq(""))
+	case "span":
+		conds = append(conds, goqu.I("parent_span_id").Neq(""))
 	}
 
 	ds := base.Select(

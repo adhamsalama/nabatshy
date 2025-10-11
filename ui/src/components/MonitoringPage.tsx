@@ -32,6 +32,7 @@ export const MonitoringPage: React.FC = () => {
   const [endDate, setEndDate] = useState(() => new Date());
   const [selectedService, setSelectedService] = useState<string>('');
   const [availableServices, setAvailableServices] = useState<string[]>([]);
+  const [traceOrSpan, setTraceOrSpan] = useState<'trace' | 'span'>('trace');
 
   // Fetch available services on mount
   useEffect(() => {
@@ -64,78 +65,33 @@ export const MonitoringPage: React.FC = () => {
         end: endDate.toISOString(),
       };
 
-      // If service is selected, use /api/metrics/search endpoint with service filter
+      // Use /api/metrics/search endpoint for all cases (with or without service filter)
+      const metricsUrl = new URL(`${config.backendUrl}/api/metrics/search`);
       if (selectedService) {
-        const metricsUrl = new URL(`${config.backendUrl}/api/metrics/search`);
         metricsUrl.searchParams.set('query', `service.name=${selectedService}`);
-        metricsUrl.searchParams.set('start', params.start);
-        metricsUrl.searchParams.set('end', params.end);
-        metricsUrl.searchParams.set('percentile', String(percentile));
+      }
+      metricsUrl.searchParams.set('start', params.start);
+      metricsUrl.searchParams.set('end', params.end);
+      metricsUrl.searchParams.set('percentile', String(percentile));
+      metricsUrl.searchParams.set('traceOrSpan', traceOrSpan);
 
-        const metricsResponse = await fetch(metricsUrl.toString());
-        if (metricsResponse.ok) {
-          const metricsData = await metricsResponse.json();
-          setPercentileSeries(metricsData.PercentileResults || []);
-          setTraceCountSeries(metricsData.TraceCountResults || []);
-          setAvgDurationSeries(metricsData.AvgDurationResults || []);
-        }
+      const metricsResponse = await fetch(metricsUrl.toString());
+      if (metricsResponse.ok) {
+        const metricsData = await metricsResponse.json();
+        setPercentileSeries(metricsData.PercentileResults || []);
+        setTraceCountSeries(metricsData.TraceCountResults || []);
+        setAvgDurationSeries(metricsData.AvgDurationResults || []);
+      }
 
-        // Error count still needs separate fetch
-        const errorCountUrl = new URL(`${config.backendUrl}/api/metrics/errors`);
-        errorCountUrl.searchParams.set('start', params.start);
-        errorCountUrl.searchParams.set('end', params.end);
+      // Error count still needs separate fetch
+      const errorCountUrl = new URL(`${config.backendUrl}/api/metrics/errors`);
+      errorCountUrl.searchParams.set('start', params.start);
+      errorCountUrl.searchParams.set('end', params.end);
 
-        const errorCountResponse = await fetch(errorCountUrl.toString());
-        if (errorCountResponse.ok) {
-          const errorCountData = await errorCountResponse.json();
-          setErrorCountSeries(errorCountData || []);
-        }
-      } else {
-        // No service selected, use individual endpoints (unfiltered)
-        // Fetch percentile series
-        const percentileUrl = new URL(`${config.backendUrl}/api/metrics/pseries`);
-        percentileUrl.searchParams.set('start', params.start);
-        percentileUrl.searchParams.set('end', params.end);
-        percentileUrl.searchParams.set('percentile', String(percentile));
-
-        const percentileResponse = await fetch(percentileUrl.toString());
-        if (percentileResponse.ok) {
-          const percentileData = await percentileResponse.json();
-          setPercentileSeries(percentileData || []);
-        }
-
-        // Fetch trace count
-        const traceCountUrl = new URL(`${config.backendUrl}/api/metrics/traces`);
-        traceCountUrl.searchParams.set('start', params.start);
-        traceCountUrl.searchParams.set('end', params.end);
-
-        const traceCountResponse = await fetch(traceCountUrl.toString());
-        if (traceCountResponse.ok) {
-          const traceCountData = await traceCountResponse.json();
-          setTraceCountSeries(traceCountData || []);
-        }
-
-        // Fetch average duration
-        const avgDurationUrl = new URL(`${config.backendUrl}/api/metrics/avg`);
-        avgDurationUrl.searchParams.set('start', params.start);
-        avgDurationUrl.searchParams.set('end', params.end);
-
-        const avgDurationResponse = await fetch(avgDurationUrl.toString());
-        if (avgDurationResponse.ok) {
-          const avgDurationData = await avgDurationResponse.json();
-          setAvgDurationSeries(avgDurationData || []);
-        }
-
-        // Fetch error count
-        const errorCountUrl = new URL(`${config.backendUrl}/api/metrics/errors`);
-        errorCountUrl.searchParams.set('start', params.start);
-        errorCountUrl.searchParams.set('end', params.end);
-
-        const errorCountResponse = await fetch(errorCountUrl.toString());
-        if (errorCountResponse.ok) {
-          const errorCountData = await errorCountResponse.json();
-          setErrorCountSeries(errorCountData || []);
-        }
+      const errorCountResponse = await fetch(errorCountUrl.toString());
+      if (errorCountResponse.ok) {
+        const errorCountData = await errorCountResponse.json();
+        setErrorCountSeries(errorCountData || []);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -162,6 +118,11 @@ export const MonitoringPage: React.FC = () => {
     fetchMetrics();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedService]);
+
+  useEffect(() => {
+    fetchMetrics();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [traceOrSpan]);
 
   return (
     <Box sx={{ p: 3 }}>
@@ -207,6 +168,17 @@ export const MonitoringPage: React.FC = () => {
             {availableServices.map(service => (
               <MenuItem key={service} value={service}>{service}</MenuItem>
             ))}
+          </Select>
+        </FormControl>
+        <FormControl size="small" sx={{ minWidth: 150 }}>
+          <InputLabel>Type</InputLabel>
+          <Select
+            value={traceOrSpan}
+            label="Type"
+            onChange={e => setTraceOrSpan(e.target.value as 'trace' | 'span')}
+          >
+            <MenuItem value="trace">Trace</MenuItem>
+            <MenuItem value="span">Span</MenuItem>
           </Select>
         </FormControl>
         <Button
