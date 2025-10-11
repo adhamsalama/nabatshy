@@ -700,6 +700,11 @@ func parseAttributeQuery(query string) []AttributeQuery {
 }
 
 func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange, query string, page, pageSize int, sort SortOption, percentile int) (*SearchResponse, error) {
+	totalStart := time.Now()
+	defer func() {
+		fmt.Printf("[SearchTraces] Total function time: %v\n", time.Since(totalStart))
+	}()
+
 	startNano := dateRange.Start.UnixNano()
 	endNano := dateRange.End.UnixNano()
 
@@ -798,7 +803,10 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 	}
 
 	var totalCount uint64
+	countStart := time.Now()
 	err = (*s.Ch).QueryRow(ctx, countSQL, countArgs...).Scan(&totalCount)
+	countDuration := time.Since(countStart)
+	fmt.Printf("[SearchTraces] Count query took: %v\n", countDuration)
 	if err != nil {
 		return nil, err
 	}
@@ -823,7 +831,10 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 	queryString, _, _ := ds.ToSQL()
 	intervalSQL := GetIntervalFromDateRange(dateRange)
 
+	metricsStart := time.Now()
 	metrics, metricsErr := s.getCombinedMetricsForQuery(ctx, queryString, intervalSQL, dateRange, percentile)
+	metricsDuration := time.Since(metricsStart)
+	fmt.Printf("[SearchTraces] Combined metrics query took: %v\n", metricsDuration)
 	if metricsErr != nil {
 		return nil, metricsErr
 	}
@@ -857,7 +868,10 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 		return nil, err
 	}
 
+	resultsStart := time.Now()
 	rows, err := (*s.Ch).Query(ctx, sqlStr, args...)
+	resultsDuration := time.Since(resultsStart)
+	fmt.Printf("[SearchTraces] Results query took: %v\n", resultsDuration)
 	if err != nil {
 		return nil, err
 	}
@@ -1373,7 +1387,10 @@ func (s *TelemetryService) getCombinedMetricsForQuery(
 		ORDER BY ts
 	`, queryString, intervalSQL, pFloat)
 
+	queryStart := time.Now()
 	rows, err := (*s.Ch).Query(ctx, combinedQuery)
+	queryDuration := time.Since(queryStart)
+	fmt.Printf("[getCombinedMetricsForQuery] ClickHouse query took: %v\n", queryDuration)
 	if err != nil {
 		return nil, fmt.Errorf("query error: %w", err)
 	}
