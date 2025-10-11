@@ -265,7 +265,7 @@ const TraceDurationBars = ({ spans, onSpanClick, selectedSpanId }: { spans: Trac
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: 'white',
+              color: '#000',
               fontSize: 12,
               whiteSpace: 'nowrap',
             }}
