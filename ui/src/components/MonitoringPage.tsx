@@ -64,22 +64,20 @@ export const MonitoringPage: React.FC = () => {
         end: endDate.toISOString(),
       };
 
-      // If service is selected, use /v1/search endpoint with service filter
+      // If service is selected, use /api/metrics/search endpoint with service filter
       if (selectedService) {
-        const searchUrl = new URL(`${config.backendUrl}/v1/search`);
-        searchUrl.searchParams.set('query', `service.name=${selectedService}`);
-        searchUrl.searchParams.set('start', params.start);
-        searchUrl.searchParams.set('end', params.end);
-        searchUrl.searchParams.set('percentile', String(percentile));
-        searchUrl.searchParams.set('page', '1');
-        searchUrl.searchParams.set('pageSize', '1'); // We only need the metrics, not results
+        const metricsUrl = new URL(`${config.backendUrl}/api/metrics/search`);
+        metricsUrl.searchParams.set('query', `service.name=${selectedService}`);
+        metricsUrl.searchParams.set('start', params.start);
+        metricsUrl.searchParams.set('end', params.end);
+        metricsUrl.searchParams.set('percentile', String(percentile));
 
-        const searchResponse = await fetch(searchUrl.toString());
-        if (searchResponse.ok) {
-          const searchData = await searchResponse.json();
-          setPercentileSeries(searchData.percentile || []);
-          setTraceCountSeries(searchData.traceCount || []);
-          setAvgDurationSeries(searchData.avgDuration || []);
+        const metricsResponse = await fetch(metricsUrl.toString());
+        if (metricsResponse.ok) {
+          const metricsData = await metricsResponse.json();
+          setPercentileSeries(metricsData.PercentileResults || []);
+          setTraceCountSeries(metricsData.TraceCountResults || []);
+          setAvgDurationSeries(metricsData.AvgDurationResults || []);
         }
 
         // Error count still needs separate fetch

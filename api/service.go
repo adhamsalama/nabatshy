@@ -122,12 +122,9 @@ type SearchResult struct {
 }
 
 type SearchResponse struct {
-	Results            []SearchResult   `json:"results"`
-	Page               int              `json:"page"`
-	PageSize           int              `json:"pageSize"`
-	PercentileResults  []TimePercentile `json:"percentile"`
-	TraceCountResults  []TimePercentile `json:"traceCount"`
-	AvgDurationResults []TimePercentile `json:"avgDuration"`
+	Results  []SearchResult `json:"results"`
+	Page     int            `json:"page"`
+	PageSize int            `json:"pageSize"`
 }
 
 type SortOption struct {
@@ -809,17 +806,6 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 		).
 		Where(conds...)
 
-	queryString, _, _ := ds.ToSQL()
-	intervalSQL := GetIntervalFromDateRange(dateRange)
-
-	metricsStart := time.Now()
-	metrics, metricsErr := s.getCombinedMetricsForQuery(ctx, queryString, intervalSQL, dateRange, percentile)
-	metricsDuration := time.Since(metricsStart)
-	fmt.Printf("[SearchTraces] Combined metrics query took: %v\n", metricsDuration)
-	if metricsErr != nil {
-		return nil, metricsErr
-	}
-
 	switch sort.Field {
 	case "start_time":
 		if sort.Order == "asc" {
@@ -885,12 +871,9 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 	}
 
 	return &SearchResponse{
-		Results:            results,
-		Page:               page,
-		PageSize:           pageSize,
-		PercentileResults:  metrics.PercentileResults,
-		TraceCountResults:  metrics.TraceCountResults,
-		AvgDurationResults: metrics.AvgDurationResults,
+		Results:  results,
+		Page:     page,
+		PageSize: pageSize,
 	}, rows.Err()
 }
 
@@ -1428,6 +1411,107 @@ func (s *TelemetryService) getCombinedMetricsForQuery(
 		TraceCountResults:  traceCountResult,
 		AvgDurationResults: avgDurationResult,
 	}, nil
+}
+
+// GetSearchMetrics returns metrics (percentile, trace count, avg duration) for a search query
+func (s *TelemetryService) GetSearchMetrics(ctx context.Context, dateRange DateRange, query string, percentile int) (*CombinedMetricsResult, error) {
+	startNano := dateRange.Start.UnixNano()
+	endNano := dateRange.End.UnixNano()
+
+	base := s.DB.From(goqu.T("denormalized_span"))
+
+	conds := []goqu.Expression{
+		goqu.I("start_time_unix_nano").Gte(startNano),
+		goqu.I("end_time_unix_nano").Lte(endNano),
+	}
+
+	if query != "" {
+		// Try to parse as attribute query first
+		if attrs := parseAttributeQuery(query); attrs != nil {
+			// Build AND conditions for each key=value or key!=value pair
+			var attrConds []goqu.Expression
+			for _, attr := range attrs {
+				// Handle special "name" key for span name matching
+				switch attr.Key {
+				case "name":
+					switch attr.Operator {
+					case "=":
+						attrConds = append(attrConds, goqu.I("name").Eq(attr.Value))
+					case "!=":
+						attrConds = append(attrConds, goqu.I("name").Neq(attr.Value))
+					}
+				case "scope":
+					// Handle special "scope" key for scope name matching
+					switch attr.Operator {
+					case "=":
+						attrConds = append(attrConds, goqu.I("scope_name").Eq(attr.Value))
+					case "!=":
+						attrConds = append(attrConds, goqu.I("scope_name").Neq(attr.Value))
+					}
+				default:
+					// Handle regular attribute searches
+					switch attr.Operator {
+					case "=":
+						// Equals: match spans that have this exact key=value pair
+						attrConds = append(attrConds, goqu.Or(
+							goqu.And(
+								goqu.L("has(resource_attributes.key, ?)", attr.Key),
+								goqu.L("has(resource_attributes.value, ?)", attr.Value),
+							),
+							goqu.And(
+								goqu.L("has(span_attributes.key, ?)", attr.Key),
+								goqu.L("has(span_attributes.value, ?)", attr.Value),
+							),
+						))
+					case "!=":
+						// Not equals: match spans that don't have the key=value pair in either resource or span attributes
+						attrConds = append(attrConds, goqu.And(
+							// Resource attributes: key doesn't exist OR (key exists AND value is different)
+							goqu.Or(
+								goqu.L("NOT has(resource_attributes.key, ?)", attr.Key),
+								goqu.And(
+									goqu.L("has(resource_attributes.key, ?)", attr.Key),
+									goqu.L("NOT has(resource_attributes.value, ?)", attr.Value),
+								),
+							),
+							// Span attributes: key doesn't exist OR (key exists AND value is different)
+							goqu.Or(
+								goqu.L("NOT has(span_attributes.key, ?)", attr.Key),
+								goqu.And(
+									goqu.L("has(span_attributes.key, ?)", attr.Key),
+									goqu.L("NOT has(span_attributes.value, ?)", attr.Value),
+								),
+							),
+						))
+					}
+				}
+			}
+			// All attribute conditions must match (AND)
+			conds = append(conds, goqu.And(attrConds...))
+		} else {
+			// Fallback to original broad search
+			conds = append(conds, goqu.Or(
+				goqu.I("name").Eq(query),
+				goqu.I("scope_name").Eq(query),
+				goqu.I("trace_id").Eq(query),
+				goqu.I("span_id").Eq(query),
+				goqu.L("has(resource_attributes.key, ?)", query),
+				goqu.L("has(resource_attributes.value, ?)", query),
+				goqu.L("has(span_attributes.key, ?)", query),
+				goqu.L("has(span_attributes.value, ?)", query),
+			))
+		}
+	}
+
+	ds := base.Select(
+		goqu.I("start_time_unix_nano"),
+		goqu.I("end_time_unix_nano"),
+	).Where(conds...)
+
+	queryString, _, _ := ds.ToSQL()
+	intervalSQL := GetIntervalFromDateRange(dateRange)
+
+	return s.getCombinedMetricsForQuery(ctx, queryString, intervalSQL, dateRange, percentile)
 }
 
 // GetUniqueServiceNames returns a list of all unique service names

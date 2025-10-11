@@ -42,7 +42,6 @@ interface SearchResponse {
   results?: SearchResult[];
   page: number;
   pageSize: number;
-  traceCount: TimePercentile[];
 }
 
 export const SearchPage: React.FC = () => {
@@ -141,18 +140,34 @@ export const SearchPage: React.FC = () => {
     setError(null);
 
     try {
-      const url = new URL(`${config.backendUrl}/v1/search`);
-      Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+      // Fetch search results
+      const searchUrl = new URL(`${config.backendUrl}/v1/search`);
+      Object.entries(params).forEach(([k, v]) => searchUrl.searchParams.set(k, v));
 
-      const response = await fetch(url.toString());
-      if (!response.ok) {
-        const errText = await response.text();
+      const searchResponse = await fetch(searchUrl.toString());
+      if (!searchResponse.ok) {
+        const errText = await searchResponse.text();
         throw new Error(`Search failed: ${errText}`);
       }
-      const data: SearchResponse = await response.json();
-      setSearchResponse(data);
-      setTraceCountSeries(data.traceCount);
+      const searchData: SearchResponse = await searchResponse.json();
+      setSearchResponse(searchData);
       setPage(pageNum);
+
+      // Fetch metrics separately
+      const metricsUrl = new URL(`${config.backendUrl}/api/metrics/search`);
+      metricsUrl.searchParams.set('query', effectiveQuery);
+      metricsUrl.searchParams.set('start', start.toISOString());
+      metricsUrl.searchParams.set('end', end.toISOString());
+
+      const metricsResponse = await fetch(metricsUrl.toString());
+      if (metricsResponse.ok) {
+        const metricsData = await metricsResponse.json();
+        setTraceCountSeries(metricsData.TraceCountResults || []);
+      } else {
+        // Don't fail the entire search if metrics fail
+        console.error('Failed to fetch metrics:', await metricsResponse.text());
+        setTraceCountSeries([]);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
       setSearchResponse(null);
@@ -164,11 +179,6 @@ export const SearchPage: React.FC = () => {
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') handleSearch(1);
-  };
-
-  const handlePageChange = (_: React.ChangeEvent<unknown>, v: number) => {
-    setPage(v);
-    handleSearch(v);
   };
 
   const handlePageSizeChange = (e: SelectChangeEvent<number>) => {
@@ -341,14 +351,14 @@ export const SearchPage: React.FC = () => {
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
               <Button
                 disabled={page <= 1}
-                onClick={() => handlePageChange(null as any, page - 1)}
+                onClick={() => handleSearch(page - 1)}
               >
                 Previous
               </Button>
               <Typography>Page {page}</Typography>
               <Button
                 disabled={!hasMorePages}
-                onClick={() => handlePageChange(null as any, page + 1)}
+                onClick={() => handleSearch(page + 1)}
               >
                 Next
               </Button>
