@@ -192,7 +192,8 @@ func (c *TelemetryController) searchTraces(w http.ResponseWriter, r *http.Reques
 		timeRange := r.URL.Query().Get("timeRange")
 		dateRange = GetDateRangeFromQuery(timeRange)
 	}
-	results, err := c.service.SearchTraces(r.Context(), dateRange, query, page, pageSize, sort)
+	traceOrSpan := r.URL.Query().Get("traceOrSpan")
+	results, err := c.service.SearchTraces(r.Context(), dateRange, query, page, pageSize, sort, traceOrSpan)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to search traces: %v", err), http.StatusInternalServerError)
 		return

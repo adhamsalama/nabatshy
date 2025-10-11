@@ -46,6 +46,7 @@ interface SearchResponse {
 
 export const SearchPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
+  const [traceOrSpan, setTraceOrSpan] = useState<"trace" | "span">("trace");
 
   const [query, setQuery] = useState('');
   const [searchResponse, setSearchResponse] = useState<SearchResponse | null>(null);
@@ -81,6 +82,7 @@ export const SearchPage: React.FC = () => {
     const q = searchParams.get('query') ?? '';
     const start = searchParams.get('start');
     const end = searchParams.get('end');
+    const traceOrSpanParam = searchParams.get('traceOrSpan');
     const sf = searchParams.get('sortField') as typeof sortField;
     const so = searchParams.get('sortOrder') as typeof sortOrder;
     const pg = parseInt(searchParams.get('page') || '1');
@@ -95,6 +97,9 @@ export const SearchPage: React.FC = () => {
     if (!isNaN(pg)) setPage(pg);
     if (!isNaN(sz)) setPageSize(sz);
     if (svc) setSelectedService(svc);
+    if (traceOrSpanParam) {
+      setTraceOrSpan(traceOrSpan)
+    }
 
     handleSearch(pg, q, sz, sf, so, start ? new Date(start) : startDate, end ? new Date(end) : endDate, svc);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -109,7 +114,8 @@ export const SearchPage: React.FC = () => {
     so = sortOrder,
     start = startDate,
     end = endDate,
-    service = selectedService
+    service = selectedService,
+    traceOrSpanValue = traceOrSpan
   ) => {
     if (!start || !end || isNaN(start.getTime()) || isNaN(end.getTime())) {
       setError('Invalid start or end date');
@@ -131,6 +137,7 @@ export const SearchPage: React.FC = () => {
       sortOrder: so,
       start: start.toISOString(),
       end: end.toISOString(),
+      traceOrSpan: traceOrSpanValue,
     };
     // Keep service in URL for bookmarking but don't send to backend (it's already in query)
     const urlParams = { ...params };
@@ -207,6 +214,12 @@ export const SearchPage: React.FC = () => {
     handleSearch(1, query, pageSize, sortField, sortOrder, startDate, endDate, newService);
   };
 
+  const handleTraceOrSpanChange = (e: SelectChangeEvent<string>) => {
+    const newTraceOrSpan = e.target.value as "trace" | "span";
+    setTraceOrSpan(newTraceOrSpan);
+    handleSearch(1, query, pageSize, sortField, sortOrder, startDate, endDate, selectedService, newTraceOrSpan);
+  };
+
   const formatTimestamp = (ns: number) => format(new Date(ns / 1e6), 'yyyy-MM-dd HH:mm:ss.SSS');
   const formatDuration = (ms: number) => `${ms.toFixed(2)} ms`;
   // Show pagination with reasonable max (user can navigate as needed)
@@ -241,6 +254,19 @@ export const SearchPage: React.FC = () => {
             {availableServices.map(service => (
               <MenuItem key={service} value={service}>{service}</MenuItem>
             ))}
+          </Select>
+
+        </FormControl>
+
+        <FormControl size="small" sx={{ minWidth: 200 }}>
+          <InputLabel>Trace Or Span</InputLabel>
+          <Select
+            value={traceOrSpan}
+            label={traceOrSpan}
+            onChange={handleTraceOrSpanChange}
+          >
+            <MenuItem key="Trace" value="trace">Trace</MenuItem>
+            <MenuItem key="Span" value="span">Span</MenuItem>
           </Select>
         </FormControl>
         <TextField

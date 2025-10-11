@@ -695,7 +695,7 @@ func parseAttributeQuery(query string) []AttributeQuery {
 	return nil
 }
 
-func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange, query string, page, pageSize int, sort SortOption) (*SearchResponse, error) {
+func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange, query string, page, pageSize int, sort SortOption, traceOrSpan string) (*SearchResponse, error) {
 	totalStart := time.Now()
 	defer func() {
 		fmt.Printf("[SearchTraces] Total function time: %v\n", time.Since(totalStart))
@@ -788,6 +788,20 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 			))
 		}
 	}
+	switch traceOrSpan {
+	case "trace":
+		{
+			conds = append(conds,
+				goqu.I("parent_span_id").Eq(""),
+			)
+		}
+	case "span":
+		{
+			conds = append(conds,
+				goqu.I("parent_span_id").Neq(""),
+			)
+		}
+	}
 
 	offset := (page - 1) * pageSize
 
@@ -805,6 +819,7 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 			goqu.I("resource_attributes.value").As("resource_values"),
 		).
 		Where(conds...)
+	fmt.Println(ds.ToSQL())
 
 	switch sort.Field {
 	case "start_time":
