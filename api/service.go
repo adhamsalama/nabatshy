@@ -1429,7 +1429,7 @@ func (s *TelemetryService) getCombinedMetricsForQuery(
 }
 
 // GetSearchMetrics returns metrics (percentile, trace count, avg duration) for a search query
-func (s *TelemetryService) GetSearchMetrics(ctx context.Context, dateRange DateRange, query string, percentile int) (*CombinedMetricsResult, error) {
+func (s *TelemetryService) GetSearchMetrics(ctx context.Context, dateRange DateRange, query string, percentile int, traceOrSpan string) (*CombinedMetricsResult, error) {
 	startNano := dateRange.Start.UnixNano()
 	endNano := dateRange.End.UnixNano()
 
@@ -1516,6 +1516,14 @@ func (s *TelemetryService) GetSearchMetrics(ctx context.Context, dateRange DateR
 				goqu.L("has(span_attributes.value, ?)", query),
 			))
 		}
+	}
+
+	// Add traceOrSpan filter
+	switch traceOrSpan {
+	case "trace":
+		conds = append(conds, goqu.I("parent_span_id").Eq(""))
+	case "span":
+		conds = append(conds, goqu.I("parent_span_id").Neq(""))
 	}
 
 	ds := base.Select(

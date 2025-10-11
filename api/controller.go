@@ -355,7 +355,8 @@ func (c *TelemetryController) getSearchMetrics(w http.ResponseWriter, r *http.Re
 		dateRange = GetDateRangeFromQuery(timeRange)
 	}
 
-	metrics, err := c.service.GetSearchMetrics(r.Context(), dateRange, query, percentile)
+	traceOrSpan := r.URL.Query().Get("traceOrSpan")
+	metrics, err := c.service.GetSearchMetrics(r.Context(), dateRange, query, percentile, traceOrSpan)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to get search metrics: %v", err), http.StatusInternalServerError)
 		return

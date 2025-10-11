@@ -167,6 +167,7 @@ export const SearchPage: React.FC = () => {
       metricsUrl.searchParams.set('query', effectiveQuery);
       metricsUrl.searchParams.set('start', start.toISOString());
       metricsUrl.searchParams.set('end', end.toISOString());
+      metricsUrl.searchParams.set('traceOrSpan', traceOrSpanValue);
 
       const metricsResponse = await fetch(metricsUrl.toString());
       if (metricsResponse.ok) {
