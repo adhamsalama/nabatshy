@@ -819,7 +819,6 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 			goqu.I("resource_attributes.value").As("resource_values"),
 		).
 		Where(conds...)
-	fmt.Println(ds.ToSQL())
 
 	switch sort.Field {
 	case "start_time":
