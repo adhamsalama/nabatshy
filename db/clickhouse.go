@@ -100,10 +100,11 @@ CREATE TABLE denormalized_span (
     span_attributes Nested (key String, value String), -- Span-level attributes (db.statement, etc.)
     events Nested (
         time_unix_nano Int64,
-        name String,
-        attributes Nested (key Array(String), value Array(String))
+        name String
     ),
-    PRIMARY KEY (trace_id, span_id)
+    `events.attributes.key` Array(Array(String)), -- Event attributes keys (flattened array)
+    `events.attributes.value` Array(Array(String)), -- Event attributes values (flattened array)
+    PRIMARY KEY (start_time_unix_nano)
 ) ENGINE = MergeTree
-ORDER BY (trace_id, span_id);
+ORDER BY (start_time_unix_nano, trace_id);
 */
