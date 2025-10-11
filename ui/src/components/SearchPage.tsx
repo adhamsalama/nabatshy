@@ -132,10 +132,12 @@ export const SearchPage: React.FC = () => {
       start: start.toISOString(),
       end: end.toISOString(),
     };
+    // Keep service in URL for bookmarking but don't send to backend (it's already in query)
+    const urlParams = { ...params };
     if (service) {
-      params.service = service;
+      urlParams.service = service;
     }
-    setSearchParams(params);
+    setSearchParams(urlParams);
     setLoading(true);
     setError(null);
 
