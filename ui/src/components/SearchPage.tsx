@@ -12,7 +12,6 @@ import {
   Typography,
   CircularProgress,
   IconButton,
-  Pagination,
   Select,
   MenuItem,
   FormControl,
@@ -41,7 +40,6 @@ interface SearchResult {
 
 interface SearchResponse {
   results?: SearchResult[];
-  totalCount: number;
   page: number;
   pageSize: number;
   traceCount: TimePercentile[];
@@ -57,7 +55,6 @@ export const SearchPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
-  const [totalCount, setTotalCount] = useState(0);
   const [sortField, setSortField] = useState<'start_time' | 'end_time' | 'duration'>('start_time');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [startDate, setStartDate] = useState(() => new Date(Date.now() - 5 * 60 * 1000));
@@ -156,12 +153,10 @@ export const SearchPage: React.FC = () => {
       setSearchResponse(data);
       setTraceCountSeries(data.traceCount);
       setPage(pageNum);
-      setTotalCount(data.totalCount);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
       setSearchResponse(null);
       setTraceCountSeries([]);
-      setTotalCount(0);
     } finally {
       setLoading(false);
     }
@@ -202,7 +197,9 @@ export const SearchPage: React.FC = () => {
 
   const formatTimestamp = (ns: number) => format(new Date(ns / 1e6), 'yyyy-MM-dd HH:mm:ss.SSS');
   const formatDuration = (ms: number) => `${ms.toFixed(2)} ms`;
-  const totalPages = searchResponse ? Math.ceil(searchResponse.totalCount / searchResponse.pageSize) : 0;
+  // Show pagination with reasonable max (user can navigate as needed)
+  const hasResults = (searchResponse?.results?.length ?? 0) > 0;
+  const hasMorePages = hasResults && searchResponse!.results!.length >= pageSize;
 
   return (
     <Box sx={{ p: 3, display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 2 }}>
@@ -342,10 +339,19 @@ export const SearchPage: React.FC = () => {
               </Select>
             </FormControl>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Typography>
-                Showing {(page - 1) * pageSize + 1} to {Math.min(page * pageSize, totalCount)} of {totalCount} results
-              </Typography>
-              <Pagination count={totalPages} page={page} onChange={handlePageChange} />
+              <Button
+                disabled={page <= 1}
+                onClick={() => handlePageChange(null as any, page - 1)}
+              >
+                Previous
+              </Button>
+              <Typography>Page {page}</Typography>
+              <Button
+                disabled={!hasMorePages}
+                onClick={() => handlePageChange(null as any, page + 1)}
+              >
+                Next
+              </Button>
             </Box>
           </Box>
         </>

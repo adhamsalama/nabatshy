@@ -123,7 +123,6 @@ type SearchResult struct {
 
 type SearchResponse struct {
 	Results            []SearchResult   `json:"results"`
-	TotalCount         uint64           `json:"totalCount"`
 	Page               int              `json:"page"`
 	PageSize           int              `json:"pageSize"`
 	PercentileResults  []TimePercentile `json:"percentile"`
@@ -793,24 +792,6 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 		}
 	}
 
-	countDS := base.
-		Select(goqu.L("count(DISTINCT trace_id, span_id)").As("count")).
-		Where(conds...)
-
-	countSQL, countArgs, err := countDS.ToSQL()
-	if err != nil {
-		return nil, err
-	}
-
-	var totalCount uint64
-	countStart := time.Now()
-	err = (*s.Ch).QueryRow(ctx, countSQL, countArgs...).Scan(&totalCount)
-	countDuration := time.Since(countStart)
-	fmt.Printf("[SearchTraces] Count query took: %v\n", countDuration)
-	if err != nil {
-		return nil, err
-	}
-
 	offset := (page - 1) * pageSize
 
 	ds := base.
@@ -905,7 +886,6 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 
 	return &SearchResponse{
 		Results:            results,
-		TotalCount:         totalCount,
 		Page:               page,
 		PageSize:           pageSize,
 		PercentileResults:  metrics.PercentileResults,
@@ -1482,4 +1462,3 @@ func (s *TelemetryService) GetUniqueServiceNames(ctx context.Context) ([]string,
 
 	return services, nil
 }
-
