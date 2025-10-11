@@ -695,7 +695,7 @@ func parseAttributeQuery(query string) []AttributeQuery {
 	return nil
 }
 
-func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange, query string, page, pageSize int, sort SortOption, percentile int) (*SearchResponse, error) {
+func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange, query string, page, pageSize int, sort SortOption) (*SearchResponse, error) {
 	totalStart := time.Now()
 	defer func() {
 		fmt.Printf("[SearchTraces] Total function time: %v\n", time.Since(totalStart))
