@@ -30,9 +30,9 @@ interface TraceSpan {
   ParentSpanID: string;
   Name: string;
   Service: string;
-  StartTime: number;
-  EndTime: number;
-  Duration: number;
+  StartTimeNS: number;
+  EndTimeNS: number;
+  DurationNS: number;
   AvgDuration?: number;
   P50Duration?: number;
   P90Duration?: number;
@@ -106,7 +106,7 @@ export const TraceDetails = () => {
 
 
   const traceMetadata = getSpansMetadata(spans);
-  const totalDuration = traceMetadata.totalDurationMS;
+  const totalDurationNS = traceMetadata.totalDuration;
 
   const hasError = (span: TraceSpan) => {
     return span.events?.some(event => event.name === 'exception') || false;
@@ -177,10 +177,10 @@ export const TraceDetails = () => {
                 <TableCell>{span.ParentSpanID || '-'}</TableCell>
                 <TableCell>{span.Name}</TableCell>
                 <TableCell>{span.Service}</TableCell>
-                <TableCell>{new Date(span.StartTime / 1000000).toISOString()}</TableCell>
-                <TableCell>{new Date(span.EndTime / 1000000).toISOString()}</TableCell>
-                <TableCell>{span.Duration.toFixed(2)}ms</TableCell>
-                <TableCell>{((span.Duration / totalDuration) * 100).toFixed(1)}%</TableCell>
+                <TableCell>{new Date(span.StartTimeNS / 1000000).toISOString()}</TableCell>
+                <TableCell>{new Date(span.EndTimeNS / 1000000).toISOString()}</TableCell>
+                <TableCell>{(span.DurationNS / 1000000).toFixed(2)}ms</TableCell>
+                <TableCell>{((span.DurationNS / totalDurationNS) * 100).toFixed(1)}%</TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -205,13 +205,13 @@ export const TraceDetails = () => {
 };
 
 function getSpansMetadata(spans: TraceSpan[]) {
-  const earliestSpan = spans.reduce((earliest, span) => span.StartTime < earliest.StartTime ? span : earliest, spans[0]);
-  const latestSpan = spans.reduce((latest, span) => span.EndTime > latest.EndTime ? span : latest, spans[0]);
-  const totalTraceDuration = latestSpan.EndTime - earliestSpan.StartTime;
+  const earliestSpan = spans.reduce((earliest, span) => span.StartTimeNS < earliest.StartTimeNS ? span : earliest, spans[0]);
+  const latestSpan = spans.reduce((latest, span) => span.EndTimeNS > latest.EndTimeNS ? span : latest, spans[0]);
+  const totalTraceDuration = latestSpan.EndTimeNS - earliestSpan.StartTimeNS;
   const totalTraceDurationMS = totalTraceDuration / 1000000;
   return {
-    startTime: earliestSpan.StartTime,
-    endTime: latestSpan.EndTime,
+    startTime: earliestSpan.StartTimeNS,
+    endTime: latestSpan.EndTimeNS,
     totalDuration: totalTraceDuration,
     totalDurationMS: totalTraceDurationMS,
     earliestSpan,
@@ -223,10 +223,10 @@ const TraceDurationBars = ({ spans, onSpanClick, selectedSpanId }: { spans: Trac
   const traceMetadata = getSpansMetadata(spans);
   const latestSpan = traceMetadata.latestSpan;
   console.log({longestSpan: latestSpan});
-  const traceStart = traceMetadata.earliestSpan.StartTime;
-  const traceEnd = latestSpan.EndTime;
-  const traceDuration = traceEnd - traceStart;
-  const traceDurationMS = traceDuration /1000000;
+  const traceStart = traceMetadata.earliestSpan.StartTimeNS;
+  const traceEnd = latestSpan.EndTimeNS;
+  const traceDurationNS = traceEnd - traceStart;
+  // const traceDurationMS = traceDuration /1000000;
 
   const hasError = (span: TraceSpan) => {
     return span.events?.some(event => event.name === 'exception') || false;
@@ -235,11 +235,11 @@ const TraceDurationBars = ({ spans, onSpanClick, selectedSpanId }: { spans: Trac
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {spans.map((item) => {
-        const offsetPct = (item.StartTime - traceMetadata.earliestSpan.StartTime) / (latestSpan.EndTime - traceMetadata.earliestSpan.StartTime) * 100;
-        const restOfLineDuration = latestSpan.EndTime - item.StartTime;
-        const thisDuration = item.EndTime - item.StartTime;
+        const offsetPct = (item.StartTimeNS - traceMetadata.earliestSpan.StartTimeNS) / (latestSpan.EndTimeNS - traceMetadata.earliestSpan.StartTimeNS) * 100;
+        const restOfLineDuration = latestSpan.EndTimeNS - item.StartTimeNS;
+        const thisDuration = item.EndTimeNS - item.StartTimeNS;
         const widthPct = thisDuration / restOfLineDuration * 100;
-        const percentage = item.Duration / traceDurationMS * 100;
+        const percentage = item.DurationNS / traceDurationNS * 100;
         const itemHasError = hasError(item);
 
         let backgroundColor = '#4f46e5';
@@ -294,7 +294,7 @@ const TraceDurationBars = ({ spans, onSpanClick, selectedSpanId }: { spans: Trac
             }}
           >
             {itemHasError && '⚠️ '}
-            {item.Name} ({item.Duration.toFixed(2)} ms, {percentage.toFixed(2)}%)
+            {item.Name} ({(item.DurationNS / 1000000).toFixed(2)} ms, {percentage.toFixed(2)}%)
           </div>
         </div>
       })}

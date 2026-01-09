@@ -51,9 +51,9 @@ type TraceSpan struct {
 	ParentSpanID string      `db:"parent_span_id"`
 	Name         string      `db:"name"`
 	Service      string      `db:"service_name"`
-	StartTime    int64       `db:"start_time_unix_nano"`
-	EndTime      int64       `db:"end_time_unix_nano"`
-	Duration     float64     `db:"duration_ms"`
+	StartTimeNS  int64       `db:"start_time_unix_nano"`
+	EndTimeNS    int64       `db:"end_time_unix_nano"`
+	DurationNS   int64       `db:"duration"`
 	Events       []SpanEvent `json:"events"`
 }
 
@@ -253,7 +253,7 @@ func (s *TelemetryService) GetTraceDetails(ctx context.Context, traceID string) 
 			goqu.C("scope_name").As("service_name"),
 			goqu.C("start_time_unix_nano"),
 			goqu.C("end_time_unix_nano"),
-			goqu.L("duration_ns / 1000000").As("duration_ms"),
+			goqu.L("duration_ns").As("duration"),
 			goqu.C("events.time_unix_nano").As("event_times"),
 			goqu.C("events.name").As("event_names"),
 			goqu.C("events.attributes.key").As("event_attr_keys"),
@@ -281,7 +281,7 @@ func (s *TelemetryService) GetTraceDetails(ctx context.Context, traceID string) 
 		var eventAttrKeys [][]string
 		var eventAttrValues [][]string
 
-		if err := rows.Scan(&s.SpanID, &s.ParentSpanID, &s.Name, &s.Service, &s.StartTime, &s.EndTime, &s.Duration, &eventTimes, &eventNames, &eventAttrKeys, &eventAttrValues); err != nil {
+		if err := rows.Scan(&s.SpanID, &s.ParentSpanID, &s.Name, &s.Service, &s.StartTimeNS, &s.EndTimeNS, &s.DurationNS, &eventTimes, &eventNames, &eventAttrKeys, &eventAttrValues); err != nil {
 			return nil, err
 		}
 
