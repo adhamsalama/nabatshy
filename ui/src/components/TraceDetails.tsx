@@ -104,7 +104,9 @@ export const TraceDetails = () => {
     );
   }
 
-  const totalDuration = Math.max(...spans.map(s => s.Duration));
+
+  const traceMetadata = getSpansMetadata(spans);
+  const totalDuration = traceMetadata.totalDurationMS;
 
   const hasError = (span: TraceSpan) => {
     return span.events?.some(event => event.name === 'exception') || false;
@@ -202,8 +204,29 @@ export const TraceDetails = () => {
   );
 };
 
+function getSpansMetadata(spans: TraceSpan[]) {
+  const earliestSpan = spans.reduce((earliest, span) => span.StartTime < earliest.StartTime ? span : earliest, spans[0]);
+  const latestSpan = spans.reduce((latest, span) => span.EndTime > latest.EndTime ? span : latest, spans[0]);
+  const totalTraceDuration = latestSpan.EndTime - earliestSpan.StartTime;
+  const totalTraceDurationMS = totalTraceDuration / 1000000;
+  return {
+    startTime: earliestSpan.StartTime,
+    endTime: latestSpan.EndTime,
+    totalDuration: totalTraceDuration,
+    totalDurationMS: totalTraceDurationMS,
+    earliestSpan,
+    latestSpan
+  }
+}
+
 const TraceDurationBars = ({ spans, onSpanClick, selectedSpanId }: { spans: TraceSpan[], onSpanClick?: (span: TraceSpan) => void, selectedSpanId?: string }) => {
-  const rootSpan = spans[0];
+  const traceMetadata = getSpansMetadata(spans);
+  const latestSpan = traceMetadata.latestSpan;
+  console.log({longestSpan: latestSpan});
+  const traceStart = traceMetadata.earliestSpan.StartTime;
+  const traceEnd = latestSpan.EndTime;
+  const traceDuration = traceEnd - traceStart;
+  const traceDurationMS = traceDuration /1000000;
 
   const hasError = (span: TraceSpan) => {
     return span.events?.some(event => event.name === 'exception') || false;
@@ -212,11 +235,11 @@ const TraceDurationBars = ({ spans, onSpanClick, selectedSpanId }: { spans: Trac
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {spans.map((item) => {
-        const offsetPct = (item.StartTime - rootSpan.StartTime) / (rootSpan.EndTime - rootSpan.StartTime) * 100;
-        const restOfLineDuration = rootSpan.EndTime - item.StartTime;
+        const offsetPct = (item.StartTime - traceMetadata.earliestSpan.StartTime) / (latestSpan.EndTime - traceMetadata.earliestSpan.StartTime) * 100;
+        const restOfLineDuration = latestSpan.EndTime - item.StartTime;
         const thisDuration = item.EndTime - item.StartTime;
         const widthPct = thisDuration / restOfLineDuration * 100;
-        const percentage = item.Duration / rootSpan.Duration * 100;
+        const percentage = item.Duration / traceDurationMS * 100;
         const itemHasError = hasError(item);
 
         let backgroundColor = '#4f46e5';
