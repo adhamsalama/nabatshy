@@ -24,7 +24,6 @@ type TelemetryCollectorController struct {
 }
 
 func (c *TelemetryCollectorController) ingestTraceHTTPRequest(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("ingesting...")
 	if r.Method != http.MethodPost {
 		fmt.Println("only POST allowed")
 		http.Error(w, "only POST allowed", http.StatusMethodNotAllowed)
@@ -60,8 +59,6 @@ func (c *TelemetryCollectorController) ingestTraceHTTPRequest(w http.ResponseWri
 					return
 				}
 			}
-
-			fmt.Printf("ingesting trace: %v\n", req)
 		}
 	default:
 		{
