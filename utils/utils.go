@@ -21,7 +21,7 @@ func PadQueryResult(rows *sql.Rows, intervalSQL string, dateRange DateRange) ([]
 		if err := rows.Scan(&ts, &v); err != nil {
 			return nil, err
 		}
-		vals[ts] = v
+		vals[ts.UTC()] = v
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

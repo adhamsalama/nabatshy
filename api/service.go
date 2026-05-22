@@ -856,7 +856,7 @@ func (s *TelemetryService) GetTraceCounts(
 
 	query := fmt.Sprintf(`
         SELECT
-            time_bucket(INTERVAL '%s', epoch_ns(start_time_unix_nano)) AS ts,
+            time_bucket(INTERVAL '%s', to_timestamp(start_time_unix_nano / 1e9), TIMESTAMPTZ 'epoch') AS ts,
             count(*) AS cnt
         FROM denormalized_span
         WHERE %s
@@ -877,7 +877,7 @@ func (s *TelemetryService) GetTraceCounts(
 		if err := rows.Scan(&ts, &cnt); err != nil {
 			return nil, fmt.Errorf("scan error: %w", err)
 		}
-		counts[ts] = cnt
+		counts[ts.UTC()] = cnt
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("rows error: %w", err)
@@ -1086,7 +1086,7 @@ func (s *TelemetryService) GetPercentileSeries(
 
 	query := fmt.Sprintf(`
         SELECT
-            time_bucket(INTERVAL '%s', to_timestamp(start_time_unix_nano / 1e9)) AS ts,
+            time_bucket(INTERVAL '%s', to_timestamp(start_time_unix_nano / 1e9), TIMESTAMPTZ 'epoch') AS ts,
             quantile_cont((end_time_unix_nano - start_time_unix_nano) / 1000000, %f) AS pvalue
         FROM denormalized_span
         WHERE start_time_unix_nano >= %d
@@ -1118,7 +1118,7 @@ func (s *TelemetryService) GetAvgDuration(
 
 	query := fmt.Sprintf(`
         SELECT
-            time_bucket(INTERVAL '%s', to_timestamp(start_time_unix_nano / 1e9)) AS ts,
+            time_bucket(INTERVAL '%s', to_timestamp(start_time_unix_nano / 1e9), TIMESTAMPTZ 'epoch') AS ts,
             avg((end_time_unix_nano - start_time_unix_nano) / 1000000) AS pvalue
         FROM denormalized_span
         WHERE start_time_unix_nano >= %d
@@ -1140,7 +1140,7 @@ func (s *TelemetryService) GetAvgDuration(
 		if err := rows.Scan(&ts, &v); err != nil {
 			return nil, err
 		}
-		vals[ts] = v
+		vals[ts.UTC()] = v
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -1173,7 +1173,7 @@ func (s *TelemetryService) GetErrorCounts(
 
 	query := fmt.Sprintf(`
 		SELECT
-			time_bucket(INTERVAL '%s', epoch_ns(start_time_unix_nano)) AS ts,
+			time_bucket(INTERVAL '%s', to_timestamp(start_time_unix_nano / 1e9), TIMESTAMPTZ 'epoch') AS ts,
 			count(*) FILTER (WHERE list_contains(events_name, 'exception')) AS cnt
 		FROM denormalized_span
 		WHERE start_time_unix_nano >= %d AND start_time_unix_nano <= %d
@@ -1194,7 +1194,7 @@ func (s *TelemetryService) GetErrorCounts(
 		if err := rows.Scan(&ts, &cnt); err != nil {
 			return nil, fmt.Errorf("scan error: %w", err)
 		}
-		counts[ts] = cnt
+		counts[ts.UTC()] = cnt
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("rows error: %w", err)
@@ -1227,6 +1227,7 @@ type CombinedMetricsResult struct {
 func (s *TelemetryService) getCombinedMetricsForQuery(
 	ctx context.Context,
 	queryString string,
+	queryArgs []interface{},
 	intervalSQL string,
 	dateRange DateRange,
 	percentile int,
@@ -1238,7 +1239,7 @@ func (s *TelemetryService) getCombinedMetricsForQuery(
 			%s
 		)
 		SELECT
-			time_bucket(INTERVAL '%s', to_timestamp(stats.start_time_unix_nano / 1e9)) AS ts,
+			time_bucket(INTERVAL '%s', to_timestamp(stats.start_time_unix_nano / 1e9), TIMESTAMPTZ 'epoch') AS ts,
 			quantile_cont((stats.end_time_unix_nano - stats.start_time_unix_nano) / 1000000, %f) AS percentile_value,
 			count(*) * 1.0 AS trace_count,
 			avg((stats.end_time_unix_nano - stats.start_time_unix_nano) / 1000000) AS avg_duration
@@ -1248,7 +1249,7 @@ func (s *TelemetryService) getCombinedMetricsForQuery(
 	`, queryString, intervalSQL, pFloat)
 
 	queryStart := time.Now()
-	rows, err := s.Ch.QueryContext(ctx, combinedQuery)
+	rows, err := s.Ch.QueryContext(ctx, combinedQuery, queryArgs...)
 	queryDuration := time.Since(queryStart)
 	fmt.Printf("[getCombinedMetricsForQuery] DuckDB query took: %v\n", queryDuration)
 	if err != nil {
@@ -1266,9 +1267,9 @@ func (s *TelemetryService) getCombinedMetricsForQuery(
 		if err := rows.Scan(&ts, &pValue, &tcValue, &avgValue); err != nil {
 			return nil, fmt.Errorf("scan error: %w", err)
 		}
-		percentileMap[ts] = pValue
-		traceCountMap[ts] = tcValue
-		avgDurationMap[ts] = avgValue
+		percentileMap[ts.UTC()] = pValue
+		traceCountMap[ts.UTC()] = tcValue
+		avgDurationMap[ts.UTC()] = avgValue
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("rows error: %w", err)
@@ -1397,10 +1398,10 @@ func (s *TelemetryService) GetSearchMetrics(ctx context.Context, dateRange DateR
 		goqu.I("end_time_unix_nano"),
 	).Where(conds...)
 
-	queryString, _, _ := ds.ToSQL()
+	queryString, queryArgs, _ := ds.ToSQL()
 	intervalSQL := GetIntervalFromDateRange(dateRange)
 
-	return s.getCombinedMetricsForQuery(ctx, queryString, intervalSQL, dateRange, percentile)
+	return s.getCombinedMetricsForQuery(ctx, queryString, queryArgs, intervalSQL, dateRange, percentile)
 }
 
 func (s *TelemetryService) GetUniqueServiceNames(ctx context.Context) ([]string, error) {
