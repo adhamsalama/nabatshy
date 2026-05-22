@@ -10,7 +10,6 @@ import (
 
 	"nabatshy/utils"
 
-	"github.com/doug-martin/goqu/v9"
 	"github.com/go-chi/chi/v5"
 	coltrace "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -68,12 +67,7 @@ func (c *TelemetryCollectorController) ingestTraceHTTPRequest(w http.ResponseWri
 		}
 	}
 
-	ingestionErr := c.service.ingestTrace(&req)
-	if ingestionErr != nil {
-		errMsg := fmt.Sprintf("ingestion err: %v\n", ingestionErr)
-		fmt.Println(errMsg)
-		panic(errMsg)
-	}
+	c.service.ingestTrace(&req)
 	resp := &coltrace.ExportTraceServiceResponse{}
 	out, err := proto.Marshal(resp)
 	if err != nil {
@@ -208,10 +202,8 @@ func (c *TelemetryCollectorController) RegisterRoutes(r chi.Router) {
 }
 
 func Run(db *sql.DB) {
-	dialect := goqu.Dialect("default")
 	telService := TelemetryCollectorService{
-		Ch: db,
-		DB: &dialect,
+		writer: NewSpanWriter(db),
 	}
 	telController := TelemetryCollectorController{
 		service: telService,

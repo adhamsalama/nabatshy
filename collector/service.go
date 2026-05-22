@@ -1,8 +1,6 @@
 package collector
 
 import (
-	"context"
-	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -12,16 +10,12 @@ import (
 
 	"nabatshy/utils"
 
-	"github.com/doug-martin/goqu/v9"
 	coltrace "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 )
 
-var InsertDenormalizedSpans = utils.InsertDenormalizedSpans
-
 type TelemetryCollectorService struct {
-	Ch *sql.DB
-	DB *goqu.DialectWrapper
+	writer *SpanWriter
 }
 
 type Trace struct {
@@ -97,8 +91,7 @@ type TraceList struct {
 	Issues     uint64  `db:"issues"`
 }
 
-func (s *TelemetryCollectorService) ingestTrace(req *coltrace.ExportTraceServiceRequest) error {
-	ctx := context.Background()
+func (s *TelemetryCollectorService) ingestTrace(req *coltrace.ExportTraceServiceRequest) {
 	for _, rs := range req.ResourceSpans {
 		resourceAttrs := extractAttributes(rs.Resource.Attributes)
 		resourceSchemaURL := rs.SchemaUrl
@@ -167,12 +160,9 @@ func (s *TelemetryCollectorService) ingestTrace(req *coltrace.ExportTraceService
 				})
 			}
 
-			if err := InsertDenormalizedSpans(s.Ch, ctx, spans); err != nil {
-				return err
-			}
+			s.writer.Write(spans)
 		}
 	}
-	return nil
 }
 
 func extractAttributes(attrs []*commonpb.KeyValue) map[string]string {
