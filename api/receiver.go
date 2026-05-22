@@ -1,28 +1,40 @@
 package api
 
 import (
+	"database/sql"
 	"log"
 	"net/http"
 
-	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/doug-martin/goqu/v9"
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 )
 
-func Run(conn clickhouse.Conn) {
-	db := goqu.Dialect("default")
+func Run(db *sql.DB) {
+	dialect := goqu.Dialect("default")
 	telService := TelemetryService{
-		Ch: &conn,
-		DB: &db,
+		Ch: db,
+		DB: &dialect,
 	}
 	telController := TelemetryController{
 		service: telService,
 	}
 
 	r := chi.NewRouter()
-
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	})
+	r.Use(middleware.Logger)
 	telController.RegisterRoutes(r)
-	// Start HTTP server
 	addr := ":3000"
 	log.Printf("listening on %s\n", addr)
 	log.Fatal(http.ListenAndServe(addr, r))
