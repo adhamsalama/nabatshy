@@ -2,16 +2,18 @@ package utils
 
 import (
 	"context"
+	"database/sql"
+	"database/sql/driver"
 	"fmt"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
-	clickhouseDriver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	duckdb "github.com/duckdb/duckdb-go/v2"
 )
 
-func PadQueryResult(rows clickhouseDriver.Rows, intervalSQL string, dateRange DateRange) ([]TimePercentile, error) {
+func PadQueryResult(rows *sql.Rows, intervalSQL string, dateRange DateRange) ([]TimePercentile, error) {
 	vals := make(map[time.Time]float64)
 	for rows.Next() {
 		var ts time.Time
@@ -25,21 +27,18 @@ func PadQueryResult(rows clickhouseDriver.Rows, intervalSQL string, dateRange Da
 		return nil, err
 	}
 
-	// determine step duration
 	step, err := ParseInterval(intervalSQL)
 	if err != nil {
 		return nil, err
 	}
 
-	// align start to ClickHouse buckets
 	aligned := AlignToInterval(dateRange.Start, step)
 
-	// build padded series
 	var series []TimePercentile
 	for ts := aligned; !ts.After(dateRange.End); ts = ts.Add(step) {
 		series = append(series, TimePercentile{
 			Timestamp: ts,
-			Value:     vals[ts], // zero if missing
+			Value:     vals[ts],
 		})
 	}
 	return series, nil
@@ -81,7 +80,7 @@ func AlignToInterval(t time.Time, interval time.Duration) time.Time {
 func GetIntervalFromDateRange(dr DateRange) string {
 	numOfBuckets := 15
 	secs := max(int(dr.End.Sub(dr.Start).Seconds())/numOfBuckets, 1)
-	return fmt.Sprintf("%d second", secs)
+	return fmt.Sprintf("%d seconds", secs)
 }
 
 func ParseDateRange(query url.Values, startField, endField, timeRangeField string) (DateRange, error) {
@@ -103,14 +102,14 @@ func ParseDateRange(query url.Values, startField, endField, timeRangeField strin
 func GetDateRangeFromQuery(timeRange string) DateRange {
 	end := time.Now()
 	if len(timeRange) < 2 {
-		return DateRange{Start: end, End: end} // invalid input fallback
+		return DateRange{Start: end, End: end}
 	}
 
 	unit := timeRange[len(timeRange)-1:]
 	valueStr := timeRange[:len(timeRange)-1]
 	value, err := strconv.Atoi(valueStr)
 	if err != nil {
-		return DateRange{Start: end, End: end} // invalid number
+		return DateRange{Start: end, End: end}
 	}
 
 	var duration time.Duration
@@ -124,7 +123,7 @@ func GetDateRangeFromQuery(timeRange string) DateRange {
 	case "d":
 		duration = time.Duration(value) * 24 * time.Hour
 	default:
-		return DateRange{Start: end, End: end} // unsupported unit
+		return DateRange{Start: end, End: end}
 	}
 
 	start := end.Add(-duration)
@@ -134,111 +133,75 @@ func GetDateRangeFromQuery(timeRange string) DateRange {
 	return dateRange
 }
 
-// DenormalizedSpanRow represents a row in the denormalized_span table
-type DenormalizedSpanRow struct {
-	TraceID                 string   `ch:"trace_id"`
-	SpanID                  string   `ch:"span_id"`
-	ParentSpanID            string   `ch:"parent_span_id"`
-	Flags                   int32    `ch:"flags"`
-	Name                    string   `ch:"name"`
-	StartTimeUnixNano       int64    `ch:"start_time_unix_nano"`
-	EndTimeUnixNano         int64    `ch:"end_time_unix_nano"`
-	ScopeID                 string   `ch:"scope_id"`
-	ScopeName               string   `ch:"scope_name"`
-	ResourceID              string   `ch:"resource_id"`
-	ResourceSchemaURL       string   `ch:"resource_schema_url"`
-	ResourceAttributesKey      []string   `ch:"resource_attributes.key"`
-	ResourceAttributesValue    []string   `ch:"resource_attributes.value"`
-	SpanAttributesKey          []string   `ch:"span_attributes.key"`
-	SpanAttributesValue        []string   `ch:"span_attributes.value"`
-	EventsTimeUnixNano         []int64    `ch:"events.time_unix_nano"`
-	EventsName                 []string   `ch:"events.name"`
-	EventsAttributesKey        [][]string `ch:"events.attributes.key"`
-	EventsAttributesValue      [][]string `ch:"events.attributes.value"`
-}
-
-func InsertDenormalizedSpans(
-	ch *clickhouseDriver.Conn,
-	ctx context.Context,
-	spans []Span,
-) error {
+func InsertDenormalizedSpans(db *sql.DB, ctx context.Context, spans []Span) error {
 	if len(spans) == 0 {
 		return nil
 	}
 
-	batch, err := (*ch).PrepareBatch(ctx, "INSERT INTO denormalized_span")
+	conn, err := db.Conn(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to prepare batch: %w", err)
+		return fmt.Errorf("getting conn: %w", err)
 	}
+	defer conn.Close()
 
-	for _, span := range spans {
-		// Extract resource attribute keys and values
-		resourceKeys := make([]string, len(span.ResourceAttributes))
-		resourceValues := make([]string, len(span.ResourceAttributes))
-		for i, attr := range span.ResourceAttributes {
-			resourceKeys[i] = attr.Key
-			resourceValues[i] = attr.Value
+	return conn.Raw(func(c any) error {
+		driverConn, ok := c.(driver.Conn)
+		if !ok {
+			return fmt.Errorf("unexpected connection type %T", c)
 		}
 
-		// Extract span attribute keys and values
-		spanKeys := make([]string, len(span.SpanAttributes))
-		spanValues := make([]string, len(span.SpanAttributes))
-		for i, attr := range span.SpanAttributes {
-			spanKeys[i] = attr.Key
-			spanValues[i] = attr.Value
+		appender, err := duckdb.NewAppenderFromConn(driverConn, "", "denormalized_span")
+		if err != nil {
+			return fmt.Errorf("creating appender: %w", err)
 		}
 
-		// Extract event data
-		eventTimes := make([]int64, len(span.Events))
-		eventNames := make([]string, len(span.Events))
-		eventAttrKeys := make([][]string, len(span.Events))
-		eventAttrValues := make([][]string, len(span.Events))
-
-		for i, event := range span.Events {
-			eventTimes[i] = event.TimeUnixNano
-			eventNames[i] = event.Name
-
-			// Extract event attributes
-			keys := make([]string, len(event.Attributes))
-			values := make([]string, len(event.Attributes))
-			for j, attr := range event.Attributes {
-				keys[j] = attr.Key
-				values[j] = attr.Value
+		for _, span := range spans {
+			resourceKeys := make([]string, len(span.ResourceAttributes))
+			resourceValues := make([]string, len(span.ResourceAttributes))
+			for i, attr := range span.ResourceAttributes {
+				resourceKeys[i] = attr.Key
+				resourceValues[i] = attr.Value
 			}
-			eventAttrKeys[i] = keys
-			eventAttrValues[i] = values
+
+			spanKeys := make([]string, len(span.SpanAttributes))
+			spanValues := make([]string, len(span.SpanAttributes))
+			for i, attr := range span.SpanAttributes {
+				spanKeys[i] = attr.Key
+				spanValues[i] = attr.Value
+			}
+
+			eventTimes := make([]int64, len(span.Events))
+			eventNames := make([]string, len(span.Events))
+			eventAttrKeys := make([][]string, len(span.Events))
+			eventAttrValues := make([][]string, len(span.Events))
+
+			for i, event := range span.Events {
+				eventTimes[i] = event.TimeUnixNano
+				eventNames[i] = event.Name
+
+				keys := make([]string, len(event.Attributes))
+				values := make([]string, len(event.Attributes))
+				for j, attr := range event.Attributes {
+					keys[j] = attr.Key
+					values[j] = attr.Value
+				}
+				eventAttrKeys[i] = keys
+				eventAttrValues[i] = values
+			}
+
+			if err := appender.AppendRow(
+				span.TraceID, span.SpanID, span.ParentSpanID, span.Flags, span.Name,
+				span.StartTimeUnixNano, span.EndTimeUnixNano,
+				span.EndTimeUnixNano-span.StartTimeUnixNano,
+				span.ScopeID.String(), span.ScopeName, span.ResourceID.String(), span.ResourceSchemaURL,
+				resourceKeys, resourceValues,
+				spanKeys, spanValues,
+				eventTimes, eventNames, eventAttrKeys, eventAttrValues,
+			); err != nil {
+				appender.Close()
+				return fmt.Errorf("appending row: %w", err)
+			}
 		}
-
-		row := DenormalizedSpanRow{
-			TraceID:                 span.TraceID,
-			SpanID:                  span.SpanID,
-			ParentSpanID:            span.ParentSpanID,
-			Flags:                   span.Flags,
-			Name:                    span.Name,
-			StartTimeUnixNano:       span.StartTimeUnixNano,
-			EndTimeUnixNano:         span.EndTimeUnixNano,
-			ScopeID:                 span.ScopeID.String(),
-			ScopeName:               span.ScopeName,
-			ResourceID:              span.ResourceID.String(),
-			ResourceSchemaURL:       span.ResourceSchemaURL,
-			ResourceAttributesKey:   resourceKeys,
-			ResourceAttributesValue: resourceValues,
-			SpanAttributesKey:       spanKeys,
-			SpanAttributesValue:     spanValues,
-			EventsTimeUnixNano:      eventTimes,
-			EventsName:              eventNames,
-			EventsAttributesKey:     eventAttrKeys,
-			EventsAttributesValue:   eventAttrValues,
-		}
-
-		if err := batch.AppendStruct(&row); err != nil {
-			return fmt.Errorf("failed to append span: %w", err)
-		}
-	}
-
-	if err := batch.Send(); err != nil {
-		return fmt.Errorf("failed to send batch: %w", err)
-	}
-
-	return nil
+		return appender.Close()
+	})
 }

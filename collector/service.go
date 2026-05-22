@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -11,7 +12,6 @@ import (
 
 	"nabatshy/utils"
 
-	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/doug-martin/goqu/v9"
 	coltrace "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
@@ -20,7 +20,7 @@ import (
 var InsertDenormalizedSpans = utils.InsertDenormalizedSpans
 
 type TelemetryCollectorService struct {
-	Ch *clickhouse.Conn
+	Ch *sql.DB
 	DB *goqu.DialectWrapper
 }
 
@@ -108,10 +108,8 @@ func (s *TelemetryCollectorService) ingestTrace(req *coltrace.ExportTraceService
 
 			var spans []utils.Span
 			for _, span := range ss.Spans {
-				// Collect events for the span
 				var events []utils.Event
 				for _, e := range span.Events {
-					// Extract event attributes
 					eventAttrs := extractAttributes(e.Attributes)
 					var eventAttributes []utils.EventAttribute
 					for k, v := range eventAttrs {
@@ -132,7 +130,6 @@ func (s *TelemetryCollectorService) ingestTrace(req *coltrace.ExportTraceService
 					)
 				}
 
-				// Collect resource attributes as a nested structure
 				var resourceAttributes []utils.ResourceAttribute
 				for k, v := range resourceAttrs {
 					resourceAttributes = append(resourceAttributes,
@@ -143,7 +140,6 @@ func (s *TelemetryCollectorService) ingestTrace(req *coltrace.ExportTraceService
 					)
 				}
 
-				// Extract span attributes (this is where db.statement will be)
 				spanAttrs := extractAttributes(span.Attributes)
 				var spanAttributes []utils.ResourceAttribute
 				for k, v := range spanAttrs {
@@ -155,7 +151,6 @@ func (s *TelemetryCollectorService) ingestTrace(req *coltrace.ExportTraceService
 					)
 				}
 
-				// Append the denormalized span
 				spans = append(spans, utils.Span{
 					TraceID:            encodeBytes(span.TraceId),
 					SpanID:             encodeBytes(span.SpanId),
@@ -172,7 +167,6 @@ func (s *TelemetryCollectorService) ingestTrace(req *coltrace.ExportTraceService
 				})
 			}
 
-			// Insert denormalized spans into the database
 			if err := InsertDenormalizedSpans(s.Ch, ctx, spans); err != nil {
 				return err
 			}
@@ -195,7 +189,6 @@ func extractAttributes(attrs []*commonpb.KeyValue) map[string]string {
 			case *commonpb.AnyValue_BoolValue:
 				m[kv.Key] = strconv.FormatBool(v.BoolValue)
 			case *commonpb.AnyValue_ArrayValue:
-				// Handle array values by converting to JSON or joining strings
 				if arrayVal := v.ArrayValue; arrayVal != nil {
 					var values []string
 					for _, item := range arrayVal.Values {
@@ -204,8 +197,6 @@ func extractAttributes(attrs []*commonpb.KeyValue) map[string]string {
 						}
 					}
 					if len(values) > 0 {
-						// For simple string arrays, join with commas for better searchability
-						// For complex data, use JSON format
 						if isSimpleStringArray(arrayVal.Values) {
 							m[kv.Key] = strings.Join(values, ",")
 						} else {
@@ -216,7 +207,6 @@ func extractAttributes(attrs []*commonpb.KeyValue) map[string]string {
 					}
 				}
 			case *commonpb.AnyValue_KvlistValue:
-				// Handle key-value list by converting to JSON
 				if kvList := v.KvlistValue; kvList != nil {
 					kvMap := extractAttributes(kvList.Values)
 					if jsonData, err := json.Marshal(kvMap); err == nil {
@@ -224,7 +214,6 @@ func extractAttributes(attrs []*commonpb.KeyValue) map[string]string {
 					}
 				}
 			case *commonpb.AnyValue_BytesValue:
-				// Handle bytes by base64 encoding
 				m[kv.Key] = base64.StdEncoding.EncodeToString(v.BytesValue)
 			default:
 				fmt.Println("=========================================")
@@ -236,7 +225,6 @@ func extractAttributes(attrs []*commonpb.KeyValue) map[string]string {
 	return m
 }
 
-// extractSingleValue extracts a single value from AnyValue
 func extractSingleValue(val *commonpb.AnyValue) string {
 	if val == nil {
 		return ""
@@ -257,7 +245,6 @@ func extractSingleValue(val *commonpb.AnyValue) string {
 	}
 }
 
-// isSimpleStringArray checks if all array values are simple strings
 func isSimpleStringArray(values []*commonpb.AnyValue) bool {
 	for _, val := range values {
 		if val == nil {
