@@ -265,7 +265,9 @@ const TraceDurationBars = ({ spans, onSpanClick, selectedSpanId }: { spans: Trac
             position: 'relative',
             width: '100%',
             height: 24,
-            background: isSelected ? '#c7d2fe' : 'rgba(128,128,128,0.15)',
+            background: isSelected
+              ? theme.palette.mode === 'dark' ? '#3730a3' : '#c7d2fe'
+              : 'rgba(128,128,128,0.15)',
             borderRadius: 4,
             overflow: 'hidden',
             cursor: 'pointer',
