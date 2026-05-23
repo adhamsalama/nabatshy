@@ -74,7 +74,7 @@ export const SpanDetails = ({ span }: { span?: SpanDetail | null }) => {
         {span.spanAttributes && Object.keys(span.spanAttributes).length > 0 && (
           <Box mt={3}>
             <Typography variant="subtitle1" gutterBottom>Span Attributes</Typography>
-            <Paper variant="outlined" sx={{ p: 2, background: '#e3f2fd' }}>
+            <Paper variant="outlined" sx={{ p: 2 }}>
               <Box display="flex" flexWrap="wrap" gap={2}>
                 {Object.entries(span.spanAttributes).map(([key, value]) => (
                   <Box key={key} flexBasis="100%" minWidth={200} mb={1}>
@@ -84,8 +84,9 @@ export const SpanDetails = ({ span }: { span?: SpanDetail | null }) => {
                           <Box component="pre" sx={{
                             mt: 1,
                             p: 1,
-                            background: '#f5f5f5',
-                            border: '1px solid #ddd',
+                            background: 'action.hover',
+                            border: '1px solid',
+                            borderColor: 'divider',
                             borderRadius: '4px',
                             fontSize: '0.75rem',
                             overflow: 'auto'
@@ -106,7 +107,7 @@ export const SpanDetails = ({ span }: { span?: SpanDetail | null }) => {
         {span.resourceAttributes && Object.keys(span.resourceAttributes).length > 0 && (
           <Box mt={3}>
             <Typography variant="subtitle1" gutterBottom>Resource Attributes</Typography>
-            <Paper variant="outlined" sx={{ p: 2, background: '#fafafa' }}>
+            <Paper variant="outlined" sx={{ p: 2 }}>
               <Box display="flex" flexWrap="wrap" gap={2}>
                 {Object.entries(span.resourceAttributes).map(([key, value]) => (
                   <Box key={key} flexBasis="33%" minWidth={200} mb={1}>

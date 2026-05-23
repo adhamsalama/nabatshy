@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTheme } from '@mui/material/styles';
 import { useParams } from 'react-router-dom';
 import {
   Container,
@@ -220,6 +221,7 @@ function getSpansMetadata(spans: TraceSpan[]) {
 }
 
 const TraceDurationBars = ({ spans, onSpanClick, selectedSpanId }: { spans: TraceSpan[], onSpanClick?: (span: TraceSpan) => void, selectedSpanId?: string }) => {
+  const theme = useTheme();
   const traceMetadata = getSpansMetadata(spans);
   const latestSpan = traceMetadata.latestSpan;
   console.log({longestSpan: latestSpan});
@@ -261,7 +263,7 @@ const TraceDurationBars = ({ spans, onSpanClick, selectedSpanId }: { spans: Trac
             position: 'relative',
             width: '100%',
             height: 24,
-            background: isSelected ? '#c7d2fe' : '#eee',
+            background: isSelected ? '#c7d2fe' : 'rgba(128,128,128,0.15)',
             borderRadius: 4,
             overflow: 'hidden',
             cursor: 'pointer',
@@ -288,7 +290,7 @@ const TraceDurationBars = ({ spans, onSpanClick, selectedSpanId }: { spans: Trac
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#000',
+              color: theme.palette.mode === 'dark' ? '#fff' : '#000',
               fontSize: 12,
               whiteSpace: 'nowrap',
             }}
