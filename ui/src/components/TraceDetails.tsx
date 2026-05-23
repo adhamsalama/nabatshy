@@ -133,7 +133,7 @@ export const TraceDetails = () => {
         <Table>
           <TableHead>
             <TableRow>
-              <TableCell>Status</TableCell>
+              <TableCell></TableCell>
               <TableCell>Span ID</TableCell>
               <TableCell>Parent Span ID</TableCell>
               <TableCell>Name</TableCell>
