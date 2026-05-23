@@ -187,7 +187,9 @@ export const TraceDetails = () => {
           </TableBody>
         </Table>
       </TableContainer>
-      <TraceDurationBars spans={spans} onSpanClick={setSelectedSpan} selectedSpanId={selectedSpan?.SpanID} />
+      <Box mt={3}>
+        <TraceDurationBars spans={spans} onSpanClick={setSelectedSpan} selectedSpanId={selectedSpan?.SpanID} />
+      </Box>
       <Box mt={4}>
         {spanDetailLoading ? (
           <Box display="flex" justifyContent="center" alignItems="center" minHeight="20vh">
