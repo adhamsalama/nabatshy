@@ -698,6 +698,13 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 					case "!=":
 						attrConds = append(attrConds, goqu.I("scope_name").Neq(attr.Value))
 					}
+				case "kind":
+					switch attr.Operator {
+					case "=":
+						attrConds = append(attrConds, goqu.I("kind").Eq(strings.ToUpper(attr.Value)))
+					case "!=":
+						attrConds = append(attrConds, goqu.I("kind").Neq(strings.ToUpper(attr.Value)))
+					}
 				default:
 					switch attr.Operator {
 					case "=":
@@ -1340,6 +1347,13 @@ func (s *TelemetryService) GetSearchMetrics(ctx context.Context, dateRange DateR
 						attrConds = append(attrConds, goqu.I("scope_name").Eq(attr.Value))
 					case "!=":
 						attrConds = append(attrConds, goqu.I("scope_name").Neq(attr.Value))
+					}
+				case "kind":
+					switch attr.Operator {
+					case "=":
+						attrConds = append(attrConds, goqu.I("kind").Eq(strings.ToUpper(attr.Value)))
+					case "!=":
+						attrConds = append(attrConds, goqu.I("kind").Neq(strings.ToUpper(attr.Value)))
 					}
 				default:
 					switch attr.Operator {
