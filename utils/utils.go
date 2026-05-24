@@ -190,7 +190,7 @@ func InsertDenormalizedSpans(db *sql.DB, ctx context.Context, spans []Span) erro
 			}
 
 			if err := appender.AppendRow(
-				span.TraceID, span.SpanID, span.ParentSpanID, span.Flags, span.Name,
+				span.TraceID, span.SpanID, span.ParentSpanID, span.Flags, span.Kind, span.Name,
 				span.StartTimeUnixNano, span.EndTimeUnixNano,
 				span.EndTimeUnixNano-span.StartTimeUnixNano,
 				span.ScopeID.String(), span.ScopeName, span.ResourceID.String(), span.ResourceSchemaURL,

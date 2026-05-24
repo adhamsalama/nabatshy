@@ -132,6 +132,7 @@ type Span struct {
 	SpanID             string
 	ParentSpanID       string
 	Flags              int32
+	Kind               string
 	Name               string
 	StartTimeUnixNano  int64
 	EndTimeUnixNano    int64

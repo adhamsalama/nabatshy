@@ -86,6 +86,7 @@ type SpanDetail struct {
 	TraceID            string            `db:"trace_id"`
 	ParentSpanID       string            `db:"parent_span_id"`
 	Name               string            `db:"name"`
+	Kind               string            `db:"kind"`
 	Scope              string            `db:"scope_name"`
 	StartTime          int64             `db:"start_time_unix_nano"`
 	EndTime            int64             `db:"end_time_unix_nano"`
@@ -442,6 +443,7 @@ func (s *TelemetryService) GetSpanDetails(ctx context.Context, spanID string) (*
 			goqu.I("trace_id"),
 			goqu.I("parent_span_id"),
 			goqu.I("name"),
+			goqu.I("kind"),
 			goqu.I("scope_name"),
 			goqu.I("start_time_unix_nano"),
 			goqu.I("end_time_unix_nano"),
@@ -484,6 +486,7 @@ func (s *TelemetryService) GetSpanDetails(ctx context.Context, spanID string) (*
 		&detail.TraceID,
 		&detail.ParentSpanID,
 		&detail.Name,
+		&detail.Kind,
 		&detail.Scope,
 		&detail.StartTime,
 		&detail.EndTime,

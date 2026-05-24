@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS denormalized_span (
     span_id                 VARCHAR,
     parent_span_id          VARCHAR,
     flags                   INTEGER,
+    kind                    VARCHAR,
     name                    VARCHAR,
     start_time_unix_nano    BIGINT,
     end_time_unix_nano      BIGINT,

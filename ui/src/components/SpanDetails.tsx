@@ -12,6 +12,7 @@ export interface SpanDetail {
   TraceID: string;
   ParentSpanID: string;
   Name: string;
+  Kind?: string;
   Scope: string;
   StartTime: number;
   EndTime: number;
@@ -47,6 +48,7 @@ export const SpanDetails = ({ span }: { span?: SpanDetail | null }) => {
             <Typography><strong>Span ID:</strong> {span.SpanID}</Typography>
             <Typography><strong>Trace ID:</strong> {span.TraceID}</Typography>
             <Typography><strong>Parent Span ID:</strong> {span.ParentSpanID || '-'}</Typography>
+            <Typography><strong>Kind:</strong> {span.Kind || '-'}</Typography>
             <Typography><strong>Scope:</strong> {span.Scope}</Typography>
           </Box>
           <Box flex={1} minWidth={250}>

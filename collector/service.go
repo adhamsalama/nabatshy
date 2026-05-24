@@ -144,11 +144,14 @@ func (s *TelemetryCollectorService) ingestTrace(req *coltrace.ExportTraceService
 					)
 				}
 
+				kind := strings.TrimPrefix(span.Kind.String(), "SPAN_KIND_")
+
 				spans = append(spans, utils.Span{
 					TraceID:            encodeBytes(span.TraceId),
 					SpanID:             encodeBytes(span.SpanId),
 					ParentSpanID:       encodeBytes(span.ParentSpanId),
 					Flags:              int32(span.Flags),
+					Kind:               kind,
 					Name:               span.Name,
 					StartTimeUnixNano:  int64(span.StartTimeUnixNano),
 					EndTimeUnixNano:    int64(span.EndTimeUnixNano),
