@@ -42,8 +42,9 @@ interface TraceSpan {
   events: SpanEvent[];
 }
 
-export const TraceDetails = () => {
-  const { traceId } = useParams();
+export const TraceDetails = ({ traceId: traceIdProp }: { traceId?: string } = {}) => {
+  const { traceId: traceIdParam } = useParams();
+  const traceId = traceIdProp ?? traceIdParam;
   const [spans, setSpans] = useState<TraceSpan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

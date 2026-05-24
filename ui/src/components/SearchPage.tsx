@@ -19,12 +19,16 @@ import {
   SelectChangeEvent,
   Button,
   Switch,
+  Drawer,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import CloseIcon from '@mui/icons-material/Close';
 import { format } from 'date-fns';
 import { useSearchParams } from 'react-router-dom';
 import TraceCountChart from './TraceCountChart';
+import { TraceDetails } from './TraceDetails';
 import { TimePercentile } from './PercentileChart';
 import { config } from "../config.ts";
 
@@ -62,6 +66,8 @@ export const SearchPage: React.FC = () => {
   const [endDate, setEndDate] = useState(() => new Date());
   const [selectedService, setSelectedService] = useState<string>('');
   const [availableServices, setAvailableServices] = useState<string[]>([]);
+
+  const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
 
   const [timePreset, setTimePreset] = useState<string>('5m');
   const [autoRefresh, setAutoRefresh] = useState(false);
@@ -454,7 +460,7 @@ export const SearchPage: React.FC = () => {
                   {searchResponse?.results?.map((r, i) => (
                     <TableRow
                       key={`${r.TraceID}-${r.SpanID}-${i}`}
-                      onClick={() => window.open(`/traces/${encodeURIComponent(r.TraceID)}`, '_blank')}
+                      onClick={() => setSelectedTraceId(r.TraceID)}
                       sx={{
                         cursor: 'pointer',
                         backgroundColor: r.hasError ? 'rgba(244, 67, 54, 0.1)' : 'inherit',
@@ -491,6 +497,33 @@ export const SearchPage: React.FC = () => {
           </Box>
         </>
       )}
+      <Drawer
+        anchor="right"
+        open={selectedTraceId !== null}
+        onClose={() => setSelectedTraceId(null)}
+        PaperProps={{ sx: { width: '80vw', display: 'flex', flexDirection: 'column' } }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 2, py: 1, borderBottom: 1, borderColor: 'divider', flexShrink: 0 }}>
+          <Typography variant="subtitle1" sx={{ fontFamily: 'monospace', fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {selectedTraceId}
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1, flexShrink: 0 }}>
+            <Button
+              size="small"
+              startIcon={<OpenInNewIcon />}
+              onClick={() => window.open(`/traces/${encodeURIComponent(selectedTraceId ?? '')}`, '_blank')}
+            >
+              Open in new tab
+            </Button>
+            <IconButton size="small" onClick={() => setSelectedTraceId(null)}>
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </Box>
+        <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
+          {selectedTraceId && <TraceDetails traceId={selectedTraceId} />}
+        </Box>
+      </Drawer>
     </Box>
   );
 };
