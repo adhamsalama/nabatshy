@@ -341,7 +341,11 @@ export const SearchPage: React.FC = () => {
   const handleServiceChange = (e: SelectChangeEvent<string>) => {
     const newService = e.target.value;
     setSelectedService(newService);
-    handleSearch(1, query, pageSize, sortField, sortOrder, startDate, endDate, newService);
+    const parts = query.split(',').map(p => p.trim()).filter(p => p && !p.startsWith('service.name='));
+    if (newService) parts.push(`service.name=${newService}`);
+    const updatedQuery = parts.join(',');
+    setQuery(updatedQuery);
+    handleSearch(1, updatedQuery, pageSize, sortField, sortOrder, startDate, endDate, newService);
   };
 
   const handleTraceOrSpanChange = (e: SelectChangeEvent<string>) => {
@@ -458,8 +462,8 @@ export const SearchPage: React.FC = () => {
         )}
 
         <FormControl size="small" sx={{ minWidth: 200 }}>
-          <InputLabel>Service</InputLabel>
-          <Select value={selectedService} label="Service" onChange={handleServiceChange}>
+          <InputLabel shrink>Service</InputLabel>
+          <Select value={selectedService} label="Service" onChange={handleServiceChange} displayEmpty renderValue={v => v || 'All Services'} notched>
             <MenuItem value="">All Services</MenuItem>
             {availableServices.map(service => (
               <MenuItem key={service} value={service}>{service}</MenuItem>
