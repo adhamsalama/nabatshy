@@ -214,7 +214,7 @@
     .tab-bar {
       display: flex;
       gap: 0.5rem;
-      margin-bottom: 1.5rem;
+      margin-bottom: 1.75rem;
       flex-wrap: wrap;
     }
 
@@ -237,16 +237,76 @@
       color: #fff;
     }
 
-    .screenshot-pane { display: none; }
-    .screenshot-pane.active { display: block; }
+    /* Slider */
+    .slider-wrap { position: relative; }
 
-    .screenshot-pane img {
-      width: 100%;
+    .slider-track {
+      overflow: hidden;
       border-radius: var(--radius);
       border: 1px solid var(--border);
-      display: block;
       box-shadow: 0 8px 40px rgba(0,0,0,0.5);
     }
+
+    .slider-inner {
+      display: flex;
+      transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .slide {
+      min-width: 100%;
+    }
+
+    .slide img {
+      width: 100%;
+      display: block;
+    }
+
+    .slider-caption {
+      text-align: center;
+      margin-top: 1rem;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      min-height: 1.4em;
+    }
+
+    .slider-arrow {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: rgba(13,17,23,0.75);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-size: 1.1rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s, border-color 0.15s;
+      z-index: 2;
+    }
+    .slider-arrow:hover { background: var(--primary); border-color: var(--primary); }
+    .slider-arrow.prev { left: -20px; }
+    .slider-arrow.next { right: -20px; }
+
+    .slider-dots {
+      display: flex;
+      justify-content: center;
+      gap: 6px;
+      margin-top: 1.25rem;
+    }
+
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--border);
+      cursor: pointer;
+      transition: background 0.15s, transform 0.15s;
+    }
+    .dot.active { background: var(--accent); transform: scale(1.3); }
 
     /* ── Features grid ── */
     .features-grid {
@@ -384,7 +444,7 @@
 <div class="hero">
   <img class="hero-logo" src="assets/logo.png" alt="Nabatshy logo" />
   <h1>The observability platform that fits in a single binary</h1>
-  <p>Drop in a single executable, point your services at it with OTLP, and get a full tracing UI. No external database. No infrastructure to manage.</p>
+  <p>Drop in a single executable, point your services at it with OpenTelemetry, and get a full tracing UI. No external database. No infrastructure to manage.</p>
   <div class="hero-actions">
     <a href="#quickstart" class="btn btn-primary">Get Started</a>
     <a href="https://github.com/adhamsalama/nabatshy" class="btn btn-outline">View on GitHub</a>
@@ -427,26 +487,31 @@
     <div class="section-label">Screenshots</div>
     <h2 class="section-title">See it in action</h2>
     <div class="tab-bar">
-      <button class="tab-btn active" onclick="switchTab(0, this)">Traces</button>
-      <button class="tab-btn" onclick="switchTab(1, this)">Metrics</button>
-      <button class="tab-btn" onclick="switchTab(2, this)">Logs</button>
-      <button class="tab-btn" onclick="switchTab(3, this)">Dashboards</button>
-      <button class="tab-btn" onclick="switchTab(4, this)">Cron</button>
+      <button class="tab-btn active" onclick="jumpToSlide(0, this)">Traces</button>
+      <button class="tab-btn" onclick="jumpToSlide(4, this)">Dashboards</button>
+      <button class="tab-btn" onclick="jumpToSlide(6, this)">Metrics</button>
+      <button class="tab-btn" onclick="jumpToSlide(8, this)">Logs</button>
+      <button class="tab-btn" onclick="jumpToSlide(9, this)">Cron</button>
     </div>
-    <div id="pane-0" class="screenshot-pane active">
-      <img src="assets/screenshot-traces.png" alt="Traces page" />
-    </div>
-    <div id="pane-1" class="screenshot-pane">
-      <img src="assets/screenshot-metrics.png" alt="Metrics page" />
-    </div>
-    <div id="pane-2" class="screenshot-pane">
-      <img src="assets/screenshot-logs.png" alt="Logs page" />
-    </div>
-    <div id="pane-3" class="screenshot-pane">
-      <img src="assets/screenshot-dashboards.png" alt="Dashboards page" />
-    </div>
-    <div id="pane-4" class="screenshot-pane">
-      <img src="assets/screenshot-cron.png" alt="Cron page" />
+    <div class="slider-wrap">
+      <button class="slider-arrow prev" onclick="slideBy(-1)">&#8592;</button>
+      <div class="slider-track">
+        <div class="slider-inner" id="sliderInner">
+          <div class="slide"><img src="assets/ss-traces.png" alt="Traces: search and filter distributed traces" /></div>
+          <div class="slide"><img src="assets/ss-traces-span.png" alt="Traces: span details panel" /></div>
+          <div class="slide"><img src="assets/ss-traces-timeline.png" alt="Traces: span timeline with system metrics" /></div>
+          <div class="slide"><img src="assets/ss-traces-logs.png" alt="Traces: correlated logs for a trace" /></div>
+          <div class="slide"><img src="assets/ss-dashboards.png" alt="Dashboards: latency, throughput and error charts" /></div>
+          <div class="slide"><img src="assets/ss-dashboards-slowest.png" alt="Dashboards: top 20 slowest traces" /></div>
+          <div class="slide"><img src="assets/ss-metrics.png" alt="Metrics: OTel metrics list" /></div>
+          <div class="slide"><img src="assets/ss-metrics-detail.png" alt="Metrics: individual metric detail" /></div>
+          <div class="slide"><img src="assets/ss-logs.png" alt="Logs: log aggregation with full-text search" /></div>
+          <div class="slide"><img src="assets/ss-cron.png" alt="Cron: scheduled data retention jobs" /></div>
+        </div>
+      </div>
+      <button class="slider-arrow next" onclick="slideBy(1)">&#8594;</button>
+      <div class="slider-caption" id="sliderCaption"></div>
+      <div class="slider-dots" id="sliderDots"></div>
     </div>
   </div>
 </section>
@@ -557,13 +622,61 @@
 </footer>
 
 <script>
-  function switchTab(index, btn) {
-    document.querySelectorAll('.screenshot-pane').forEach((p, i) => {
-      p.classList.toggle('active', i === index);
-    });
-    document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
-    btn.classList.add('active');
+  const CAPTIONS = [
+    'Traces: search and filter distributed traces',
+    'Traces: span details panel',
+    'Traces: span timeline with system metrics',
+    'Traces: correlated logs for a trace',
+    'Dashboards: latency, throughput and error charts',
+    'Dashboards: top 20 slowest traces',
+    'Metrics: OTel metrics list',
+    'Metrics: individual metric detail',
+    'Logs: log aggregation with full-text search',
+    'Cron: scheduled data retention jobs',
+  ];
+
+  // Tab → first slide index
+  const TAB_STARTS = [0, 4, 6, 8, 9];
+
+  let current = 0;
+  const total = CAPTIONS.length;
+
+  const inner = document.getElementById('sliderInner');
+  const caption = document.getElementById('sliderCaption');
+  const dotsEl = document.getElementById('sliderDots');
+
+  // Build dots
+  CAPTIONS.forEach((_, i) => {
+    const d = document.createElement('div');
+    d.className = 'dot' + (i === 0 ? ' active' : '');
+    d.onclick = () => goTo(i);
+    dotsEl.appendChild(d);
+  });
+
+  function goTo(index) {
+    current = (index + total) % total;
+    inner.style.transform = `translateX(-${current * 100}%)`;
+    caption.textContent = CAPTIONS[current];
+    dotsEl.querySelectorAll('.dot').forEach((d, i) => d.classList.toggle('active', i === current));
+    // Update tab active state
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    let activeTab = 0;
+    TAB_STARTS.forEach((start, i) => { if (current >= start) activeTab = i; });
+    tabBtns.forEach((b, i) => b.classList.toggle('active', i === activeTab));
   }
+
+  function slideBy(dir) { goTo(current + dir); }
+
+  function jumpToSlide(index, btn) { goTo(index); }
+
+  // Keyboard nav
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowLeft') slideBy(-1);
+    if (e.key === 'ArrowRight') slideBy(1);
+  });
+
+  // Init caption
+  goTo(0);
 
   function copyInstall(el) {
     const text = el.querySelector('span').textContent;

@@ -2,52 +2,64 @@
 
 ![logo](./docs/assets/logo.png)
 
-Nabatshy is a self-contained observability platform for distributed traces. Drop in a single binary, point your services at it with OTLP, and get a full tracing UI — no external database, no infrastructure to manage.
+**The observability platform that fits in a single binary.**
 
-![](./docs/assets/screenshot1.png)
-![](./docs/assets/screenshot2.png)
-![](./docs/assets/screenshot3.png)
+Drop in a single executable, point your services at it with OpenTelemetry, and get a full tracing UI. No external database. No infrastructure to manage.
 
-## Philosophy
+![Traces](./docs/assets/ss-traces.png)
 
-Most observability stacks require running Grafana, Prometheus, and Tempo, or Jaeger backed by Elasticsearch or ClickHouse, before you can see a single trace. Nabatshy embeds [DuckDB](https://duckdb.org) directly into the binary, so the entire platform — OTLP ingestion, trace storage, query engine, and UI — ships as a single executable with a single `.db` file on disk.
+## Why Nabatshy
 
-This is intentionally designed for **small to medium workloads**: production apps with moderate traffic, local development, side projects, and internal tools — any setup where spinning up a dedicated observability cluster is more overhead than the service it's monitoring. If you need to handle millions of spans per second, use something else. If you want traces working in under a minute, this is for you.
+Most observability stacks require running Grafana, Prometheus, and Tempo — or Jaeger backed by Elasticsearch or ClickHouse — before you see a single trace. Nabatshy embeds [DuckDB](https://duckdb.org) directly into the binary, so the entire platform ships as a single executable with a single `.db` file on disk.
+
+Designed for **production apps with moderate traffic, local development, side projects, and internal tools**. Any setup where spinning up a dedicated observability cluster is more overhead than the service it's monitoring. If you need to handle millions of spans per second, use something else. If you want traces working in under a minute, this is for you.
+
+## Features
+
+- **Trace search and filtering** — search by service, operation, duration, and attributes with real-time percentile charts
+- **Span timeline visualization** — flame-graph-style span bars with error highlighting and click-to-inspect
+- **Service metrics and percentiles** — P50/P90/P99 duration charts, error rates, and throughput trends per service and endpoint
+- **OTel metrics** — visualize OTLP metric data points alongside traces
+- **Log aggregation with full-text search** — ingest OTLP logs and search bodies with DuckDB's built-in FTS extension
+- **Cron-based data retention** — schedule SQL queries to delete old spans and keep storage lean
 
 ## How It Works
 
 When you run the binary, three HTTP servers start concurrently:
 
-| Port | Purpose |
-|------|---------|
-| 4318 | OTLP collector — receives traces from your services (JSON or protobuf) |
-| 3000 | Query API — serves trace and metrics data to the UI |
-| 8081 | UI — serves the embedded React dashboard |
+| Port | Purpose                                                                         |
+| ---- | ------------------------------------------------------------------------------- |
+| 4318 | OpenTelemetry collector — receives traces, metrics, and logs (JSON or protobuf) |
+| 3000 | Query API — serves data to the UI                                               |
+| 8081 | UI — serves the embedded React dashboard                                        |
 
-Your services send traces to `http://localhost:4318` using any OpenTelemetry SDK. The collector writes spans into a local DuckDB file (`nabatshy.db`). The UI at `http://localhost:8081` lets you search traces, inspect individual spans, and view service metrics over time.
+Your services send telemetry to `http://localhost:4318` using any OpenTelemetry SDK. The collector writes data into a local DuckDB file (`nabatshy.db`). The UI at `http://localhost:8081` lets you search traces, inspect spans, query logs, and view metrics.
 
-### Trace Ingestion
+## Screenshots
 
-The collector accepts standard OTLP over HTTP, supporting both `application/x-protobuf` and `application/json` content types. Spans are flattened into a single denormalized table in DuckDB, optimized for the kinds of time-range and attribute filter queries the UI runs. Writes are serialized through a channel to work within DuckDB's single-writer model.
+![Traces](./docs/assets/ss-traces.png)
+![Trace span details](./docs/assets/ss-traces-span.png)
+![Trace timeline with system metrics](./docs/assets/ss-traces-timeline.png)
+![Trace correlated logs](./docs/assets/ss-traces-logs.png)
+![Dashboards](./docs/assets/ss-dashboards.png)
+![Dashboards top 20 slowest traces](./docs/assets/ss-dashboards-slowest.png)
+![Metrics](./docs/assets/ss-metrics.png)
+![Metrics detail](./docs/assets/ss-metrics-detail.png)
+![Logs](./docs/assets/ss-logs.png)
+![Cron](./docs/assets/ss-cron.png)
 
-### Query & UI
-
-The React dashboard (built with Vite and MUI) is compiled and embedded directly into the Go binary at build time. At runtime, the Go binary serves it from memory — no separate frontend server or static file directory needed. The UI communicates with the query API on port 3000.
-
-## Build
+## Quick Start
 
 ```bash
-# Build the UI first (output gets embedded into the Go binary)
+# 1. Clone and install frontend dependencies
+git clone https://github.com/adhamsalama/nabatshy
+cd nabatshy
+
+# 2. Build the UI (output gets embedded into the Go binary)
 cd ui && npm install && npm run build && cd ..
 
-# Build the binary
-go mod download
+# 3. Build and run
 go build -ldflags="-s -w"
-```
-
-## Run
-
-```bash
 ./nabatshy
 ```
 
@@ -62,8 +74,10 @@ docker run -p 4318:4318 -p 3000:3000 -p 8081:8081 -v $(pwd)/data:/data nabatshy
 
 ## Configuration
 
-Set the path for the DuckDB data file via environment variable (defaults to `nabatshy.db` in the current directory):
-
-```bash
-DUCKDB_PATH=/data/nabatshy.db ./nabatshy
-```
+| Flag          | Env var                 | Default       | Description                           |
+| ------------- | ----------------------- | ------------- | ------------------------------------- |
+| `--otel-port` | `OTEL_PORT`             | `4318`        | OpenTelemetry collector port          |
+| `--api-port`  | `API_PORT`              | `3000`        | Query API port                        |
+| `--ui-port`   | `UI_PORT`               | `8081`        | UI server port                        |
+| `--in-memory` | `DUCKDB_IN_MEMORY=true` | off           | Use in-memory DuckDB (no persistence) |
+|               | `DUCKDB_PATH`           | `nabatshy.db` | Path to the DuckDB data file          |
