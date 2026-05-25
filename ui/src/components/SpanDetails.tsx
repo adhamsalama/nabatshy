@@ -71,9 +71,16 @@ export const SpanDetails = ({ span, onAddToSearch }: { span?: SpanDetail | null;
 
   return (
     <Container>
-      <Typography variant="h5" gutterBottom>
-        Span Details: {span.Name}
-      </Typography>
+      <Box display="flex" alignItems="center" gap={1} mb={1}>
+        <Typography variant="h5">Span Details: {span.Name}</Typography>
+        {onAddToSearch && (
+          <Tooltip title={`Add name=${span.Name} to search`} placement="top">
+            <IconButton size="small" onClick={() => onAddToSearch('name', span.Name)}>
+              <AddCircleOutlineIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        )}
+      </Box>
       <Paper sx={{ p: 3 }}>
         <Box display="flex" flexWrap="wrap" gap={4}>
           <Box flex={1} minWidth={250}>
