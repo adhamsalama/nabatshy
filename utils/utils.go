@@ -88,10 +88,12 @@ func ParseDateRange(query url.Values, startField, endField, timeRangeField strin
 	endStr := query.Get(endField)
 	if startStr != "" && endStr != "" {
 		parseTime := func(s string) (time.Time, error) {
-			if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
-				return t, nil
+			for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02T15:04", "2006-01-02T15:04:05"} {
+				if t, err := time.Parse(layout, s); err == nil {
+					return t, nil
+				}
 			}
-			return time.Parse(time.RFC3339, s)
+			return time.Time{}, fmt.Errorf("unrecognised time format: %s", s)
 		}
 		startTime, err1 := parseTime(startStr)
 		endTime, err2 := parseTime(endStr)

@@ -10,8 +10,9 @@ import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
 import { Link, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip as ReTooltip, ResponsiveContainer, CartesianGrid,
+  BarChart, Bar, XAxis, YAxis, Tooltip as ReTooltip, ResponsiveContainer, CartesianGrid, ReferenceArea,
 } from 'recharts';
+import { useChartBrush } from '../hooks/useChartBrush';
 import { config } from '../config';
 
 // ─── constants ────────────────────────────────────────────────────────────────
@@ -137,7 +138,10 @@ export const LogsPage: React.FC = () => {
       const start = new Date(end.getTime() - preset.minutes * 60 * 1000);
       return { start: start.toISOString(), end: end.toISOString() };
     }
-    return { start: customStart, end: customEnd };
+    return {
+      start: new Date(customStart).toISOString(),
+      end: new Date(customEnd).toISOString(),
+    };
   }
 
   const fetchLogs = useCallback((silent = false) => {
@@ -222,6 +226,21 @@ export const LogsPage: React.FC = () => {
 
   const isCustom = TIME_PRESETS[timePresetIdx].minutes === 0;
 
+  const { onMouseDown, onMouseMove, onMouseUp, refLeft, refRight, selecting } = useChartBrush(
+    (start, end) => {
+      // datetime-local input needs local time as YYYY-MM-DDTHH:MM
+      const toLocal = (ms: string) => {
+        const d = new Date(Number(ms));
+        const pad = (n: number) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      };
+      setCustomStart(toLocal(start));
+      setCustomEnd(toLocal(end));
+      setTimePresetIdx(TIME_PRESETS.findIndex(p => p.minutes === 0));
+      setPage(0);
+    }
+  );
+
   function handleSort(field: string) {
     if (sortField === field) {
       setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -282,7 +301,14 @@ export const LogsPage: React.FC = () => {
       {chartData.length > 0 && (
         <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
           <ResponsiveContainer width="100%" height={160}>
-            <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+            <BarChart
+              data={chartData}
+              margin={{ top: 4, right: 8, left: 0, bottom: 0 }}
+              onMouseDown={onMouseDown}
+              onMouseMove={onMouseMove}
+              onMouseUp={onMouseUp}
+              style={{ userSelect: 'none', cursor: selecting ? 'col-resize' : 'crosshair' }}
+            >
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
               <XAxis
                 dataKey="ts"
@@ -301,6 +327,9 @@ export const LogsPage: React.FC = () => {
                   isAnimationActive={false}
                 />
               ))}
+              {refLeft && refRight && (
+                <ReferenceArea x1={refLeft} x2={refRight} fill="#90caf9" fillOpacity={0.3} strokeOpacity={0.5} />
+              )}
             </BarChart>
           </ResponsiveContainer>
         </Paper>
