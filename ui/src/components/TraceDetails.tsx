@@ -319,8 +319,8 @@ const TraceDurationBars = ({ spans, onSpanClick, selectedSpanId }: { spans: Trac
                 onClick={() => onSpanClick?.(span)}
                 sx={{
                   display: 'flex',
-                  alignItems: 'center',
-                  height: 28,
+                  alignItems: 'flex-start',
+                  minHeight: 28,
                   cursor: 'pointer',
                   borderRadius: 1,
                   borderLeft: isSelected ? `3px solid ${color}` : '3px solid transparent',
@@ -331,9 +331,9 @@ const TraceDurationBars = ({ spans, onSpanClick, selectedSpanId }: { spans: Trac
                 }}
               >
                 {/* Name column */}
-                <Box sx={{ width: NAME_COL, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 0.5, pl: 1, pr: 1, overflow: 'hidden' }}>
+                <Box sx={{ width: NAME_COL, flexShrink: 0, display: 'flex', alignItems: 'flex-start', gap: 0.5, pl: 1, pr: 1, py: '6px' }}>
                   {itemHasError && <Box component="span" sx={{ flexShrink: 0 }}>❌</Box>}
-                  <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'text.primary', fontSize: 12, flex: 1 }}>
+                  <Box component="span" sx={{ wordBreak: 'break-all', color: 'text.primary', fontSize: 12, flex: 1 }}>
                     {span.Name}
                   </Box>
                   <Box component="span" sx={{ flexShrink: 0, color: 'text.disabled', fontSize: 11 }}>
@@ -342,7 +342,7 @@ const TraceDurationBars = ({ spans, onSpanClick, selectedSpanId }: { spans: Trac
                 </Box>
 
                 {/* Bar column */}
-                <Box sx={{ flex: 1, position: 'relative', height: 16, background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)', borderRadius: 0.5, overflow: 'hidden' }}>
+                <Box sx={{ flex: 1, position: 'relative', height: 16, mt: '6px', background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)', borderRadius: 0.5, overflow: 'hidden' }}>
                   <Box sx={{
                     position: 'absolute',
                     left: `${offsetPct}%`,
