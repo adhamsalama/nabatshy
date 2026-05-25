@@ -1794,32 +1794,6 @@ type LogRow struct {
 }
 
 func (s *TelemetryService) GetLogs(ctx context.Context, dr DateRange, traceID, spanID, service, severity, body, sortField, sortDir string, page, pageSize int) ([]LogRow, error) {
-	var conds []string
-	var args []any
-
-	if spanID != "" {
-		conds = append(conds, "span_id = ?")
-		args = append(args, spanID)
-	} else if traceID != "" {
-		conds = append(conds, "trace_id = ?")
-		args = append(args, traceID)
-	} else {
-		conds = append(conds, "timestamp_unix_nano >= ?", "timestamp_unix_nano <= ?")
-		args = append(args, dr.Start.UnixNano(), dr.End.UnixNano())
-	}
-	if service != "" {
-		conds = append(conds, "service_name = ?")
-		args = append(args, service)
-	}
-	if severity != "" {
-		conds = append(conds, "severity_text = ?")
-		args = append(args, severity)
-	}
-	if body != "" {
-		conds = append(conds, "body ILIKE ?")
-		args = append(args, "%"+body+"%")
-	}
-
 	if pageSize <= 0 {
 		pageSize = 50
 	}
@@ -1827,7 +1801,6 @@ func (s *TelemetryService) GetLogs(ctx context.Context, dr DateRange, traceID, s
 		page = 1
 	}
 	offset := (page - 1) * pageSize
-	args = append(args, pageSize, offset)
 
 	allowedSortFields := map[string]string{
 		"timestamp": "timestamp_unix_nano",
@@ -1844,17 +1817,81 @@ func (s *TelemetryService) GetLogs(ctx context.Context, dr DateRange, traceID, s
 		orderDir = "ASC"
 	}
 
-	query := fmt.Sprintf(`
-		SELECT
-			timestamp_unix_nano, severity_text, severity_number,
-			body, trace_id, span_id, service_name, scope_name,
-			attributes_key, attributes_value,
-			resource_attributes_key, resource_attributes_value
-		FROM log_record
-		WHERE %s
-		ORDER BY %s %s
-		LIMIT ? OFFSET ?
-	`, strings.Join(conds, " AND "), orderCol, orderDir)
+	var query string
+	var args []any
+
+	if body != "" {
+		var outerConds []string
+		args = append(args, body)
+		if spanID != "" {
+			outerConds = append(outerConds, "span_id = ?")
+			args = append(args, spanID)
+		} else if traceID != "" {
+			outerConds = append(outerConds, "trace_id = ?")
+			args = append(args, traceID)
+		} else {
+			outerConds = append(outerConds, "timestamp_unix_nano >= ?", "timestamp_unix_nano <= ?")
+			args = append(args, dr.Start.UnixNano(), dr.End.UnixNano())
+		}
+		if service != "" {
+			outerConds = append(outerConds, "service_name = ?")
+			args = append(args, service)
+		}
+		if severity != "" {
+			outerConds = append(outerConds, "severity_text = ?")
+			args = append(args, severity)
+		}
+		outerConds = append(outerConds, "__score IS NOT NULL")
+		args = append(args, pageSize, offset)
+
+		query = fmt.Sprintf(`
+			SELECT
+				timestamp_unix_nano, severity_text, severity_number,
+				body, trace_id, span_id, service_name, scope_name,
+				attributes_key, attributes_value,
+				resource_attributes_key, resource_attributes_value
+			FROM (
+				SELECT *, fts_main_log_record.match_bm25(rowid, ?) AS __score
+				FROM log_record
+			)
+			WHERE %s
+			ORDER BY %s %s
+			LIMIT ? OFFSET ?
+		`, strings.Join(outerConds, " AND "), orderCol, orderDir)
+	} else {
+		var conds []string
+		if spanID != "" {
+			conds = append(conds, "span_id = ?")
+			args = append(args, spanID)
+		} else if traceID != "" {
+			conds = append(conds, "trace_id = ?")
+			args = append(args, traceID)
+		} else {
+			conds = append(conds, "timestamp_unix_nano >= ?", "timestamp_unix_nano <= ?")
+			args = append(args, dr.Start.UnixNano(), dr.End.UnixNano())
+		}
+		if service != "" {
+			conds = append(conds, "service_name = ?")
+			args = append(args, service)
+		}
+		if severity != "" {
+			conds = append(conds, "severity_text = ?")
+			args = append(args, severity)
+		}
+		args = append(args, pageSize, offset)
+
+		query = fmt.Sprintf(`
+			SELECT
+				timestamp_unix_nano, severity_text, severity_number,
+				body, trace_id, span_id, service_name, scope_name,
+				attributes_key, attributes_value,
+				resource_attributes_key, resource_attributes_value
+			FROM log_record
+			WHERE %s
+			ORDER BY %s %s
+			LIMIT ? OFFSET ?
+		`, strings.Join(conds, " AND "), orderCol, orderDir)
+	}
 
 	rows, err := s.Ch.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -1903,34 +1940,60 @@ type LogVolumeBucket struct {
 func (s *TelemetryService) GetLogVolume(ctx context.Context, dr DateRange, service, severity, body string) ([]LogVolumeBucket, error) {
 	interval := GetIntervalFromDateRange(dr)
 
-	var conds []string
+	var query string
 	var args []any
 
-	conds = append(conds, "timestamp_unix_nano >= ?", "timestamp_unix_nano <= ?")
-	args = append(args, dr.Start.UnixNano(), dr.End.UnixNano())
-	if service != "" {
-		conds = append(conds, "service_name = ?")
-		args = append(args, service)
-	}
-	if severity != "" {
-		conds = append(conds, "severity_text = ?")
-		args = append(args, severity)
-	}
 	if body != "" {
-		conds = append(conds, "body ILIKE ?")
-		args = append(args, "%"+body+"%")
-	}
+		var outerConds []string
+		args = append(args, body)
+		outerConds = append(outerConds, "timestamp_unix_nano >= ?", "timestamp_unix_nano <= ?", "__score IS NOT NULL")
+		args = append(args, dr.Start.UnixNano(), dr.End.UnixNano())
+		if service != "" {
+			outerConds = append(outerConds, "service_name = ?")
+			args = append(args, service)
+		}
+		if severity != "" {
+			outerConds = append(outerConds, "severity_text = ?")
+			args = append(args, severity)
+		}
 
-	query := fmt.Sprintf(`
-		SELECT
-			epoch_ms(time_bucket(INTERVAL '%s', to_timestamp(timestamp_unix_nano / 1e9), TIMESTAMPTZ 'epoch')) AS bucket_ms,
-			UPPER(COALESCE(NULLIF(severity_text, ''), 'UNKNOWN')) AS sev,
-			COUNT(*) AS cnt
-		FROM log_record
-		WHERE %s
-		GROUP BY bucket_ms, sev
-		ORDER BY bucket_ms, sev
-	`, interval, strings.Join(conds, " AND "))
+		query = fmt.Sprintf(`
+			SELECT
+				epoch_ms(time_bucket(INTERVAL '%s', to_timestamp(timestamp_unix_nano / 1e9), TIMESTAMPTZ 'epoch')) AS bucket_ms,
+				UPPER(COALESCE(NULLIF(severity_text, ''), 'UNKNOWN')) AS sev,
+				COUNT(*) AS cnt
+			FROM (
+				SELECT *, fts_main_log_record.match_bm25(rowid, ?) AS __score
+				FROM log_record
+			)
+			WHERE %s
+			GROUP BY bucket_ms, sev
+			ORDER BY bucket_ms, sev
+		`, interval, strings.Join(outerConds, " AND "))
+	} else {
+		var conds []string
+		conds = append(conds, "timestamp_unix_nano >= ?", "timestamp_unix_nano <= ?")
+		args = append(args, dr.Start.UnixNano(), dr.End.UnixNano())
+		if service != "" {
+			conds = append(conds, "service_name = ?")
+			args = append(args, service)
+		}
+		if severity != "" {
+			conds = append(conds, "severity_text = ?")
+			args = append(args, severity)
+		}
+
+		query = fmt.Sprintf(`
+			SELECT
+				epoch_ms(time_bucket(INTERVAL '%s', to_timestamp(timestamp_unix_nano / 1e9), TIMESTAMPTZ 'epoch')) AS bucket_ms,
+				UPPER(COALESCE(NULLIF(severity_text, ''), 'UNKNOWN')) AS sev,
+				COUNT(*) AS cnt
+			FROM log_record
+			WHERE %s
+			GROUP BY bucket_ms, sev
+			ORDER BY bucket_ms, sev
+		`, interval, strings.Join(conds, " AND "))
+	}
 
 	rows, err := s.Ch.QueryContext(ctx, query, args...)
 	if err != nil {

@@ -18,6 +18,10 @@ func NewLogWriter(db *sql.DB) *LogWriter {
 		for records := range w.ch {
 			if err := utils.InsertLogRecords(db, context.Background(), records); err != nil {
 				fmt.Printf("log insert error: %v\n", err)
+				continue
+			}
+			if _, err := db.ExecContext(context.Background(), "PRAGMA create_fts_index('log_record', 'rowid', 'body', overwrite=1)"); err != nil {
+				fmt.Printf("fts index rebuild error: %v\n", err)
 			}
 		}
 	}()

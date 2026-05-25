@@ -90,5 +90,11 @@ func InitDuckDB() *sql.DB {
 	if _, err := db.Exec(createTable); err != nil {
 		panic(fmt.Sprintf("creating schema: %v", err))
 	}
+	if _, err := db.Exec("INSTALL fts; LOAD fts"); err != nil {
+		panic(fmt.Sprintf("loading fts extension: %v", err))
+	}
+	if _, err := db.Exec("PRAGMA create_fts_index('log_record', 'rowid', 'body', overwrite=1)"); err != nil {
+		panic(fmt.Sprintf("building fts index: %v", err))
+	}
 	return db
 }
