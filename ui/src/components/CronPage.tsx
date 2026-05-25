@@ -132,7 +132,7 @@ export const CronPage: React.FC = () => {
             multiline
             rows={3}
             size="small"
-            placeholder="DELETE FROM denormalized_span WHERE StartTime < now() - INTERVAL 1 DAY"
+            placeholder="DELETE FROM denormalized_span WHERE start_time_unix_nano < epoch_ns(now() - INTERVAL 1 DAY)"
             InputLabelProps={{ shrink: true }}
           />
           <TextField
