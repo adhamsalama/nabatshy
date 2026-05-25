@@ -104,6 +104,7 @@ const TraceMetricsPanel: React.FC<Props> = ({ startTimeNs, endTimeNs }) => {
                   unit={chart.unit}
                   metricType={chart.metricType}
                   title={chart.name}
+                  metricName={chart.name}
                   referenceTime={referenceTime}
                 />
               ))}

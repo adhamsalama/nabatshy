@@ -11,6 +11,7 @@ import { format } from 'date-fns';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { config } from '../config.ts';
 import MetricSeriesChart, { MetricSeries } from './MetricSeriesChart';
+import { resolveUnit, formatMetricValue } from '../utils/metricUnits';
 
 // ─── constants ───────────────────────────────────────────────────────────────
 
@@ -87,37 +88,6 @@ function formatValue(row: OtelMetricRow): string {
   return typeof v === 'number' ? v.toFixed(4) : String(v);
 }
 
-const BYTE_UNITS = new Set(['By', 'bytes', 'Bytes', 'byte']);
-const BYTE_METRIC_PATTERNS = [/memory/, /\.io$/, /network.*bytes/];
-
-function isBytesMetric(unit: string, metricName = ''): boolean {
-  if (BYTE_UNITS.has(unit)) return true;
-  if (unit === '') return BYTE_METRIC_PATTERNS.some(p => p.test(metricName));
-  return false;
-}
-
-function formatBytes(v: number): string {
-  if (v < 1024) return `${v.toFixed(0)} B`;
-  if (v < 1024 ** 2) return `${(v / 1024).toFixed(1)} KB`;
-  if (v < 1024 ** 3) return `${(v / 1024 ** 2).toFixed(2)} MB`;
-  return `${(v / 1024 ** 3).toFixed(2)} GB`;
-}
-
-function formatMetricValue(v: number, unit: string, metricName = ''): string {
-  if (unit === 's' || unit === 'ms') {
-    const ms = unit === 'ms' ? v : v * 1000;
-    if (ms < 1) return `${(ms * 1000).toFixed(2)} µs`;
-    if (ms < 1000) return `${ms.toFixed(2)} ms`;
-    return `${(ms / 1000).toFixed(3)} s`;
-  }
-  if (isBytesMetric(unit, metricName)) return formatBytes(v);
-  if (v === 0) return '0';
-  if (Math.abs(v) < 0.0001) return v.toExponential(3);
-  if (Math.abs(v) >= 1e9) return `${(v / 1e9).toFixed(2)}B`;
-  if (Math.abs(v) >= 1e6) return `${(v / 1e6).toFixed(2)}M`;
-  if (Math.abs(v) >= 1e3) return `${(v / 1e3).toFixed(2)}k`;
-  return v.toFixed(4);
-}
 
 // ─── sub-components ──────────────────────────────────────────────────────────
 
@@ -394,7 +364,8 @@ export const MetricsPage: React.FC = () => {
   const totalCount = allPoints.reduce((a, p) => a + (p.histogram_count ?? 0), 0);
   const totalSum   = allPoints.reduce((a, p) => a + (p.histogram_sum ?? 0), 0);
 
-  const fmt = (v: number | null) => v !== null ? formatMetricValue(v, metricUnit, selectedMetric) : '—';
+  const resolvedMetricUnit = resolveUnit(selectedMetric, metricUnit);
+  const fmt = (v: number | null) => v !== null ? formatMetricValue(v, resolvedMetricUnit) : '—';
 
   // ── render ────────────────────────────────────────────────────────────────
 
@@ -645,6 +616,7 @@ export const MetricsPage: React.FC = () => {
                 unit={metricUnit}
                 metricType={metricType}
                 title={selectedMetric}
+                metricName={selectedMetric}
                 onRangeSelect={handleChartRangeSelect}
               />
               <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>

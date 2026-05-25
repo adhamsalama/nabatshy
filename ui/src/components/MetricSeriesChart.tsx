@@ -10,6 +10,7 @@ import {
   ReferenceArea, ReferenceLine,
 } from 'recharts';
 import { useChartBrush } from '../hooks/useChartBrush';
+import { resolveUnit, formatMetricValue } from '../utils/metricUnits';
 
 const COLORS = ['#2C6B6B', '#ff7300', '#8884d8', '#82ca9d', '#ffc658', '#a4de6c', '#fa8072', '#b0c4de'];
 
@@ -32,6 +33,7 @@ interface Props {
   title?: string;
   onRangeSelect?: (start: string, end: string) => void;
   referenceTime?: string;
+  metricName?: string;
 }
 
 function seriesKey(labels: Record<string, string>): string {
@@ -56,15 +58,12 @@ function buildChartData(series: MetricSeries[]): Record<string, unknown>[] {
   });
 }
 
-const tickFmt = (v: unknown) => {
-  if (typeof v !== 'number') return String(v);
-  if (Math.abs(v) >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
-  if (Math.abs(v) >= 1e3) return `${(v / 1e3).toFixed(1)}k`;
-  if (Math.abs(v) < 0.001 && v !== 0) return v.toExponential(1);
-  return v.toFixed(v < 1 ? 3 : 1);
-};
-
-const MetricSeriesChart: React.FC<Props> = ({ series, unit, metricType, title, onRangeSelect, referenceTime }) => {
+const MetricSeriesChart: React.FC<Props> = ({ series, unit, metricType, title, onRangeSelect, referenceTime, metricName }) => {
+  const resolvedUnit = resolveUnit(metricName ?? '', unit);
+  const tickFmt = (v: unknown) => {
+    if (typeof v !== 'number') return String(v);
+    return formatMetricValue(v, resolvedUnit);
+  };
   const theme = useTheme();
   const tooltipStyle = {
     backgroundColor: theme.palette.background.paper,
@@ -77,14 +76,12 @@ const MetricSeriesChart: React.FC<Props> = ({ series, unit, metricType, title, o
   const keys = series.map(s => seriesKey(s.labels));
   const brushProps = { onMouseDown, onMouseMove, onMouseUp, onMouseLeave: onMouseUp };
 
-  const yAxisLabel = unit || undefined;
-
   const yAxis = (
     <YAxis
       domain={[0, 'auto']}
       width={70}
       tickFormatter={tickFmt}
-      label={yAxisLabel ? { value: yAxisLabel, angle: -90, position: 'insideLeft', offset: 10, style: { fontSize: 11, fill: theme.palette.text.secondary } } : undefined}
+      label={resolvedUnit ? { value: resolvedUnit, angle: -90, position: 'insideLeft', offset: 10, style: { fontSize: 11, fill: theme.palette.text.secondary } } : undefined}
     />
   );
 
@@ -101,7 +98,7 @@ const MetricSeriesChart: React.FC<Props> = ({ series, unit, metricType, title, o
       contentStyle={tooltipStyle}
       labelFormatter={v => new Date(v as string).toLocaleString()}
       formatter={(val, name: string) => [
-        typeof val === 'number' ? `${tickFmt(val)}${unit ? ' ' + unit : ''}` : '—',
+        typeof val === 'number' ? formatMetricValue(val, resolvedUnit) : '—',
         name,
       ]}
     />
