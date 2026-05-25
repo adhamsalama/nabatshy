@@ -33,7 +33,7 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import CloseIcon from '@mui/icons-material/Close';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
 import { format } from 'date-fns';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useLocation, useNavigate } from 'react-router-dom';
 import TraceCountChart from './TraceCountChart';
 import { TraceDetails } from './TraceDetails';
 import { TimePercentile } from './PercentileChart';
@@ -128,6 +128,8 @@ const FilterChipInput = ({ value, onChange, onSearch }: { value: string; onChang
 
 export const SearchPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [traceOrSpan, setTraceOrSpan] = useState<"trace" | "span" | "all">("trace");
 
   const [query, setQuery] = useState('');
@@ -209,6 +211,7 @@ export const SearchPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if ((location.state as { internal?: boolean })?.internal) return;
     const q = searchParams.get('query') ?? '';
     const start = searchParams.get('start');
     const end = searchParams.get('end');
@@ -253,9 +256,11 @@ export const SearchPage: React.FC = () => {
       svc,
       (traceOrSpanParam as "trace" | "span" | "all") || traceOrSpan,
       presetParam,
+      false,
+      true,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [location.key]);
 
   const handleSearch = async (
     pageNum = 1,
@@ -269,6 +274,7 @@ export const SearchPage: React.FC = () => {
     traceOrSpanValue = traceOrSpan,
     preset = timePreset,
     silent = false,
+    skipUrlPush = false,
   ) => {
     const resolvedStart = preset !== 'custom' ? getPresetDates(preset).start : start;
     const resolvedEnd   = preset !== 'custom' ? getPresetDates(preset).end   : end;
@@ -314,7 +320,7 @@ export const SearchPage: React.FC = () => {
     urlParams.autoRefresh = String(autoRefresh);
     urlParams.intervalPreset = intervalPreset;
     if (intervalPreset === 'custom' && customIntervalInput) urlParams.customInterval = customIntervalInput;
-    if (!silent) setSearchParams(urlParams);
+    if (!silent && !skipUrlPush) { navigate(`?${new URLSearchParams(urlParams)}`, { replace: false, state: { internal: true } }); }
     if (!silent) { setLoading(true); setError(null); }
 
     try {
