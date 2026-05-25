@@ -3,3 +3,4 @@ rest
 *.http
 example
 .vite
+docs/.DS_Store
