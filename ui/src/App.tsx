@@ -18,12 +18,9 @@ function App() {
   const theme = createTheme({
     palette: {
       mode: darkMode ? 'dark' : 'light',
-      primary: {
-        main: '#2C6B6B',
-        light: '#3d8f8f',
-        dark: '#1e4d4d',
-        contrastText: '#ffffff',
-      },
+      primary: darkMode
+        ? { main: '#4db6ac', light: '#80cbc4', dark: '#2C6B6B', contrastText: '#000000' }
+        : { main: '#2C6B6B', light: '#3d8f8f', dark: '#1e4d4d', contrastText: '#ffffff' },
       background: darkMode
         ? { default: '#121212', paper: '#1e1e1e' }
         : { default: '#f5f7f7', paper: '#ffffff' },
