@@ -125,12 +125,14 @@ export const TraceDetails = ({ traceId: traceIdProp, onAddToSearch, onAddAsColum
     return `${type}: ${message}${stacktrace ? '\n\nStack trace:\n' + stacktrace : ''}`;
   };
 
+  const SHOW_SPAN_TABLE = false;
+
   return (
     <Container>
       <Typography variant="h5" gutterBottom>
         Trace Details: {traceId}
       </Typography>
-      <TableContainer component={Paper}>
+      {SHOW_SPAN_TABLE && <TableContainer component={Paper}>
         <Table>
           <TableHead>
             <TableRow>
@@ -187,7 +189,7 @@ export const TraceDetails = ({ traceId: traceIdProp, onAddToSearch, onAddAsColum
             ))}
           </TableBody>
         </Table>
-      </TableContainer>
+      </TableContainer>}
       <Box mt={3}>
         <TraceDurationBars spans={spans} onSpanClick={setSelectedSpan} selectedSpanId={selectedSpan?.SpanID} />
       </Box>
