@@ -286,7 +286,8 @@ export const SearchPage: React.FC = () => {
     }
 
     let effectiveQuery = q;
-    if (service) {
+    const alreadyInQuery = q.split(',').some(p => p.trim().startsWith('service.name='));
+    if (service && !alreadyInQuery) {
       const serviceFilter = `service.name=${service}`;
       effectiveQuery = q ? `${serviceFilter},${q}` : serviceFilter;
     }
