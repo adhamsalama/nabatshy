@@ -42,7 +42,7 @@ interface TraceSpan {
   events: SpanEvent[];
 }
 
-export const TraceDetails = ({ traceId: traceIdProp }: { traceId?: string } = {}) => {
+export const TraceDetails = ({ traceId: traceIdProp, onAddToSearch }: { traceId?: string; onAddToSearch?: (key: string, value: string) => void } = {}) => {
   const { traceId: traceIdParam } = useParams();
   const traceId = traceIdProp ?? traceIdParam;
   const [spans, setSpans] = useState<TraceSpan[]>([]);
@@ -201,7 +201,7 @@ export const TraceDetails = ({ traceId: traceIdProp }: { traceId?: string } = {}
             <Typography color="error">{spanDetailError}</Typography>
           </Box>
         ) : (
-          <SpanDetails span={spanDetail} />
+          <SpanDetails span={spanDetail} onAddToSearch={onAddToSearch} />
         )}
       </Box>
     </Container>

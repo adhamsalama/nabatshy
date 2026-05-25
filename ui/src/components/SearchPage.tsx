@@ -521,7 +521,12 @@ export const SearchPage: React.FC = () => {
           </Box>
         </Box>
         <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
-          {selectedTraceId && <TraceDetails traceId={selectedTraceId} />}
+          {selectedTraceId && (
+            <TraceDetails
+              traceId={selectedTraceId}
+              onAddToSearch={(key, value) => setQuery(prev => prev ? `${prev},${key}=${value}` : `${key}=${value}`)}
+            />
+          )}
         </Box>
       </Drawer>
     </Box>

@@ -1,5 +1,6 @@
-import { Container, Typography, Paper, Box, Chip, Alert, AlertTitle } from '@mui/material';
+import { Container, Typography, Paper, Box, Chip, Alert, AlertTitle, IconButton, Tooltip } from '@mui/material';
 import ErrorIcon from '@mui/icons-material/Error';
+import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 
 interface SpanEvent {
   timeUnixNano: number;
@@ -27,7 +28,39 @@ export interface SpanDetail {
   events?: SpanEvent[];
 }
 
-export const SpanDetails = ({ span }: { span?: SpanDetail | null }) => {
+const AttrRow = ({ attrKey, value, onAddToSearch }: { attrKey: string; value: string; onAddToSearch?: (key: string, value: string) => void }) => (
+  <Box
+    display="flex"
+    alignItems="flex-start"
+    gap={1}
+    sx={{ '&:hover .add-to-search': { visibility: 'visible' } }}
+  >
+    <Typography variant="body2" sx={{ flex: 1 }}>
+      <strong>{attrKey}:</strong>{' '}
+      {attrKey === 'db.statement' || attrKey === 'exception.stacktrace' ? (
+        <Box component="pre" sx={{ mt: 1, p: 1, background: 'action.hover', border: '1px solid', borderColor: 'divider', borderRadius: '4px', fontSize: '0.75rem', overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+          {value}
+        </Box>
+      ) : (
+        <span>{value}</span>
+      )}
+    </Typography>
+    {onAddToSearch && (
+      <Tooltip title={`Add ${attrKey}=${value} to search`} placement="top">
+        <IconButton
+          className="add-to-search"
+          size="small"
+          sx={{ visibility: 'hidden', flexShrink: 0, mt: '-2px' }}
+          onClick={() => onAddToSearch(attrKey, value)}
+        >
+          <AddCircleOutlineIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
+    )}
+  </Box>
+);
+
+export const SpanDetails = ({ span, onAddToSearch }: { span?: SpanDetail | null; onAddToSearch?: (key: string, value: string) => void }) => {
   if (!span) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="20vh">
@@ -77,30 +110,9 @@ export const SpanDetails = ({ span }: { span?: SpanDetail | null }) => {
           <Box mt={3}>
             <Typography variant="subtitle1" gutterBottom>Span Attributes</Typography>
             <Paper variant="outlined" sx={{ p: 2 }}>
-              <Box display="flex" flexWrap="wrap" gap={2}>
+              <Box display="flex" flexDirection="column" gap={1}>
                 {Object.entries(span.spanAttributes).map(([key, value]) => (
-                  <Box key={key} flexBasis="100%" minWidth={200} mb={1}>
-                    <Typography variant="body2">
-                      <strong>{key}:</strong> {
-                        key === 'db.statement' ? (
-                          <Box component="pre" sx={{
-                            mt: 1,
-                            p: 1,
-                            background: 'action.hover',
-                            border: '1px solid',
-                            borderColor: 'divider',
-                            borderRadius: '4px',
-                            fontSize: '0.75rem',
-                            overflow: 'auto'
-                          }}>
-                            {value}
-                          </Box>
-                        ) : (
-                          <span>{value}</span>
-                        )
-                      }
-                    </Typography>
-                  </Box>
+                  <AttrRow key={key} attrKey={key} value={value} onAddToSearch={onAddToSearch} />
                 ))}
               </Box>
             </Paper>
@@ -110,11 +122,9 @@ export const SpanDetails = ({ span }: { span?: SpanDetail | null }) => {
           <Box mt={3}>
             <Typography variant="subtitle1" gutterBottom>Resource Attributes</Typography>
             <Paper variant="outlined" sx={{ p: 2 }}>
-              <Box display="flex" flexWrap="wrap" gap={2}>
+              <Box display="flex" flexDirection="column" gap={1}>
                 {Object.entries(span.resourceAttributes).map(([key, value]) => (
-                  <Box key={key} flexBasis="33%" minWidth={200} mb={1}>
-                    <Typography variant="body2"><strong>{key}:</strong> {value}</Typography>
-                  </Box>
+                  <AttrRow key={key} attrKey={key} value={value} onAddToSearch={onAddToSearch} />
                 ))}
               </Box>
             </Paper>
