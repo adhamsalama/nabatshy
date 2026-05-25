@@ -225,89 +225,136 @@ function getSpansMetadata(spans: TraceSpan[]) {
   }
 }
 
+const SERVICE_COLORS = [
+  '#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ec4899',
+  '#8b5cf6', '#14b8a6', '#f97316', '#06b6d4', '#84cc16',
+];
+
+
+
 const TraceDurationBars = ({ spans, onSpanClick, selectedSpanId }: { spans: TraceSpan[], onSpanClick?: (span: TraceSpan) => void, selectedSpanId?: string }) => {
   const theme = useTheme();
-  const traceMetadata = getSpansMetadata(spans);
-  const latestSpan = traceMetadata.latestSpan;
-  console.log({longestSpan: latestSpan});
-  const traceStart = traceMetadata.earliestSpan.StartTimeNS;
-  const traceEnd = latestSpan.EndTimeNS;
-  const traceDurationNS = traceEnd - traceStart;
-  // const traceDurationMS = traceDuration /1000000;
+  const isDark = theme.palette.mode === 'dark';
+  const meta = getSpansMetadata(spans);
+  const traceStart = meta.earliestSpan.StartTimeNS;
+  const traceDurationNS = meta.endTime - meta.startTime;
 
-  const hasError = (span: TraceSpan) => {
-    return span.events?.some(event => event.name === 'exception') || false;
+  // Assign a consistent color per service name
+  const services = [...new Set(spans.map(s => s.Service))];
+  const serviceColor = (service: string) =>
+    SERVICE_COLORS[services.indexOf(service) % SERVICE_COLORS.length];
+
+  const hasError = (span: TraceSpan) =>
+    span.events?.some(e => e.name === 'exception') ?? false;
+
+  const fmtMs = (ns: number) => {
+    const ms = ns / 1e6;
+    return ms < 1 ? `${(ns / 1e3).toFixed(0)}µs` : `${ms.toFixed(2)}ms`;
   };
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      {spans.map((item) => {
-        const offsetPct = (item.StartTimeNS - traceMetadata.earliestSpan.StartTimeNS) / (latestSpan.EndTimeNS - traceMetadata.earliestSpan.StartTimeNS) * 100;
-        const restOfLineDuration = latestSpan.EndTimeNS - item.StartTimeNS;
-        const thisDuration = item.EndTimeNS - item.StartTimeNS;
-        const widthPct = thisDuration / restOfLineDuration * 100;
-        const percentage = item.DurationNS / traceDurationNS * 100;
-        const itemHasError = hasError(item);
+  // Time ruler tick marks
+  const TICKS = 5;
+  const ticks = Array.from({ length: TICKS + 1 }, (_, i) => i / TICKS);
 
-        let backgroundColor = '#4f46e5';
-        if (itemHasError) {
-          backgroundColor = '#dc2626'; // Red for errors
-        } else if (percentage >= 75) {
-          backgroundColor = '#dc2626'
-        }
-        else if (percentage >= 50) {
-          backgroundColor = '#ea580c'
-        }
-        else if (percentage >= 25) {
-          backgroundColor = '#eab308'
-        }
-        const isSelected = selectedSpanId === item.SpanID;
-        return <div
-          key={item.SpanID}
-          style={{
-            position: 'relative',
-            width: '100%',
-            height: 24,
-            background: isSelected
-              ? theme.palette.mode === 'dark' ? '#3730a3' : '#c7d2fe'
-              : 'rgba(128,128,128,0.15)',
-            borderRadius: 4,
-            overflow: 'hidden',
-            cursor: 'pointer',
-            border: isSelected ? '2px solid #6366f1' : itemHasError ? '2px solid #dc2626' : '2px solid transparent',
-          }}
-          onClick={() => onSpanClick && onSpanClick(item)}
-        >
-          <div
-            style={{
-              position: 'absolute',
-              left: `${offsetPct}%`,
-              width: `${widthPct}%`,
-              height: '100%',
-              background: backgroundColor,
-            }}
-          />
-          <div
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: '50%',
-              transform: 'translateX(-50%)',
-              height: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: theme.palette.mode === 'dark' ? '#fff' : '#000',
-              fontSize: 12,
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {itemHasError && '⚠️ '}
-            {item.Name} ({(item.DurationNS / 1000000).toFixed(2)} ms, {percentage.toFixed(2)}%)
-          </div>
-        </div>
-      })}
-    </div>
+  const NAME_COL = '38%';
+
+  return (
+    <Box sx={{ fontFamily: 'monospace', fontSize: 12 }}>
+      {/* Time ruler */}
+      <Box sx={{ display: 'flex', pl: NAME_COL, mb: 0.5 }}>
+        <Box sx={{ position: 'relative', flex: 1, height: 20 }}>
+          {ticks.map(t => (
+            <Box key={t} sx={{ position: 'absolute', left: `${t * 100}%`, transform: 'translateX(-50%)', color: 'text.disabled', fontSize: 10, whiteSpace: 'nowrap' }}>
+              {fmtMs(traceDurationNS * t)}
+            </Box>
+          ))}
+        </Box>
+      </Box>
+
+      {/* Tick lines background */}
+      <Box sx={{ display: 'flex', pl: NAME_COL, mb: 0.5 }}>
+        <Box sx={{ position: 'relative', flex: 1, height: 1, background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }}>
+          {ticks.map(t => (
+            <Box key={t} sx={{ position: 'absolute', left: `${t * 100}%`, top: -4, width: '1px', height: 8, background: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)' }} />
+          ))}
+        </Box>
+      </Box>
+
+      {/* Span rows */}
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+        {spans.map(span => {
+
+          const offsetPct = (span.StartTimeNS - traceStart) / traceDurationNS * 100;
+          const widthPct = Math.max(span.DurationNS / traceDurationNS * 100, 0.4);
+          const isSelected = selectedSpanId === span.SpanID;
+          const itemHasError = hasError(span);
+          const pct = span.DurationNS / traceDurationNS * 100;
+          const isRoot = !span.ParentSpanID;
+          const color = itemHasError ? '#ef4444'
+            : isRoot || pct < 25 ? serviceColor(span.Service)
+            : pct >= 75 ? '#dc2626'
+            : pct >= 50 ? '#ea580c'
+            : '#eab308';
+          const durationMs = fmtMs(span.DurationNS);
+
+          return (
+            <Tooltip
+              key={span.SpanID}
+              placement="top"
+              title={
+                <Box sx={{ fontSize: 12 }}>
+                  <div><strong>{span.Name}</strong></div>
+                  <div>{span.Service}</div>
+                  <div>Duration: {durationMs}</div>
+                  <div>Start: +{fmtMs(span.StartTimeNS - traceStart)}</div>
+                  {itemHasError && <div style={{ color: '#fca5a5' }}>⚠ Exception</div>}
+                </Box>
+              }
+            >
+              <Box
+                onClick={() => onSpanClick?.(span)}
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  height: 28,
+                  cursor: 'pointer',
+                  borderRadius: 1,
+                  borderLeft: isSelected ? `3px solid ${color}` : '3px solid transparent',
+                  background: isSelected
+                    ? isDark ? 'rgba(99,102,241,0.15)' : 'rgba(99,102,241,0.08)'
+                    : itemHasError ? 'rgba(239,68,68,0.08)' : 'transparent',
+                  '&:hover': { background: itemHasError ? 'rgba(239,68,68,0.15)' : isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' },
+                }}
+              >
+                {/* Name column */}
+                <Box sx={{ width: NAME_COL, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 0.5, pl: 1, pr: 1, overflow: 'hidden' }}>
+                  {itemHasError && <Box component="span" sx={{ color: '#ef4444', flexShrink: 0 }}>⚠</Box>}
+                  <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'text.primary', fontSize: 12, flex: 1 }}>
+                    {span.Name}
+                  </Box>
+                  <Box component="span" sx={{ flexShrink: 0, color: 'text.disabled', fontSize: 11 }}>
+                    {durationMs}
+                  </Box>
+                </Box>
+
+                {/* Bar column */}
+                <Box sx={{ flex: 1, position: 'relative', height: 16, background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)', borderRadius: 0.5, overflow: 'hidden' }}>
+                  <Box sx={{
+                    position: 'absolute',
+                    left: `${offsetPct}%`,
+                    width: `${widthPct}%`,
+                    height: '100%',
+                    background: color,
+                    opacity: isSelected ? 1 : 0.8,
+                    borderRadius: 0.5,
+                  }} />
+                </Box>
+              </Box>
+            </Tooltip>
+          );
+        })}
+      </Box>
+    </Box>
   );
 }
 
