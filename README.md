@@ -4,7 +4,7 @@
 
 **The observability platform that fits in a single binary.**
 
-Drop in a single executable, point your services at it with OpenTelemetry, and get a full tracing UI. No external database. No infrastructure to manage.
+Drop in a single executable, point your services at it with OpenTelemetry, and get a full observability UI with traces, metrics, logs, and dashboards. No external database. No infrastructure to manage.
 
 ![Traces](./docs/assets/ss-traces.png)
 
