@@ -1,5 +1,6 @@
 import React from 'react';
 import { Card, CardContent, Typography, Box } from '@mui/material';
+import { useTheme } from '@mui/material/styles';
 import {
   ResponsiveContainer,
   LineChart,
@@ -25,6 +26,8 @@ interface PercentileChartProps {
 }
 
 const PercentileChart: React.FC<PercentileChartProps> = ({ data, percentile, onRangeSelect }) => {
+  const theme = useTheme();
+  const tooltipStyle = { backgroundColor: theme.palette.background.paper, border: `1px solid ${theme.palette.divider}`, color: theme.palette.text.primary };
   const { onMouseDown, onMouseMove, onMouseUp, refLeft, refRight, selecting } = useChartBrush(onRangeSelect);
 
   return (
@@ -50,6 +53,7 @@ const PercentileChart: React.FC<PercentileChartProps> = ({ data, percentile, onR
               <YAxis domain={[0, 'auto']} unit="ms" width={60} />
               {!selecting && (
                 <ReTooltip
+                  contentStyle={tooltipStyle}
                   labelFormatter={v => new Date(v).toLocaleString()}
                   formatter={val => [`${(val as number).toFixed(2)} ms`, `P${percentile}`]}
                 />

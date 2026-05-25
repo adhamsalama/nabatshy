@@ -1,5 +1,6 @@
 import React from 'react';
 import { Card, CardContent, Typography, Box } from '@mui/material';
+import { useTheme } from '@mui/material/styles';
 import {
   LineChart,
   Line,
@@ -19,6 +20,8 @@ interface ErrorCountChartProps {
 }
 
 const ErrorCountChart: React.FC<ErrorCountChartProps> = ({ data, onRangeSelect }) => {
+  const theme = useTheme();
+  const tooltipStyle = { backgroundColor: theme.palette.background.paper, border: `1px solid ${theme.palette.divider}`, color: theme.palette.text.primary };
   const { onMouseDown, onMouseMove, onMouseUp, refLeft, refRight, selecting } = useChartBrush(onRangeSelect);
 
   return (
@@ -42,7 +45,7 @@ const ErrorCountChart: React.FC<ErrorCountChartProps> = ({ data, onRangeSelect }
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="timestamp" tickFormatter={(v) => new Date(v).toLocaleString()} />
               <YAxis domain={[0, 'auto']} />
-              {!selecting && <Tooltip labelFormatter={(v) => new Date(v).toLocaleString()} />}
+              {!selecting && <Tooltip contentStyle={tooltipStyle} labelFormatter={(v) => new Date(v).toLocaleString()} />}
               <Legend />
               <Line type="monotone" dataKey="value" name="Error Count" stroke="#f44336" dot={false} />
               {selecting && refLeft && refRight && (

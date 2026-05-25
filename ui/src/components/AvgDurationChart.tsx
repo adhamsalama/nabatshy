@@ -1,5 +1,6 @@
 import React from 'react';
 import { Card, CardContent, Typography, Box } from '@mui/material';
+import { useTheme } from '@mui/material/styles';
 import {
   ResponsiveContainer,
   LineChart,
@@ -19,6 +20,8 @@ interface AvgDurationChartProps {
 }
 
 const AvgDurationChart: React.FC<AvgDurationChartProps> = ({ data, onRangeSelect }) => {
+  const theme = useTheme();
+  const tooltipStyle = { backgroundColor: theme.palette.background.paper, border: `1px solid ${theme.palette.divider}`, color: theme.palette.text.primary };
   const { onMouseDown, onMouseMove, onMouseUp, refLeft, refRight, selecting } = useChartBrush(onRangeSelect);
 
   return (
@@ -44,6 +47,7 @@ const AvgDurationChart: React.FC<AvgDurationChartProps> = ({ data, onRangeSelect
               <YAxis domain={[0, 'auto']} unit="ms" width={60} />
               {!selecting && (
                 <Tooltip
+                  contentStyle={tooltipStyle}
                   labelFormatter={(v) => new Date(v).toLocaleString()}
                   formatter={(value: number) => value.toFixed(2)}
                 />
