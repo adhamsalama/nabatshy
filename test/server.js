@@ -137,6 +137,7 @@ app.post("/orders", async (req, res) => {
     rootSpan.end();
     const orderId = randomBetween(100, 999);
     log("INFO", `Order ${orderId} created successfully`, { "order.id": String(orderId) });
+    log("DEBUG", `Order audit trail: ${JSON.stringify({ orderId, source: "api", steps: ["validate-inventory", "charge-payment", "save-order-to-db"], timestamps: { validated: new Date().toISOString(), charged: new Date().toISOString(), saved: new Date().toISOString() }, metadata: { requestId: Math.random().toString(36).slice(2), region: "us-east-1", instanceId: "i-0abc123def456", traceFlags: 1, samplingRate: 0.1, userAgent: "Mozilla/5.0 (compatible; OrderService/2.1)", correlationId: Math.random().toString(36).slice(2), retryCount: 0, processingTimeMs: randomBetween(100, 400), paymentProvider: "stripe", inventoryNode: "node-" + randomBetween(1, 5) } })}`);
     return { id: orderId, status: "created" };
   });
 

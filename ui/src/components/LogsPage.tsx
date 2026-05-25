@@ -3,9 +3,11 @@ import {
   Box, Typography, CircularProgress, Select, MenuItem, FormControl,
   InputLabel, Button, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Paper, Chip, TextField, Switch,
-  TablePagination, TableSortLabel,
+  TablePagination, TableSortLabel, Collapse, IconButton,
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
 import { Link, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip as ReTooltip, ResponsiveContainer, CartesianGrid,
@@ -123,6 +125,7 @@ export const LogsPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [chartData, setChartData] = useState<ChartBucket[]>([]);
   const [chartSeverities, setChartSeverities] = useState<string[]>([]);
+  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
 
   const silentFetchRef = useRef<(() => void) | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -164,6 +167,7 @@ export const LogsPage: React.FC = () => {
     Promise.all([logsReq, volReq])
       .then(([data, volData]: [LogRow[], LogVolumeBucket[]]) => {
         setLogs(data);
+        setExpandedRows(new Set());
 
         const bucketMap = new Map<number, ChartBucket>();
         const sevSet = new Set<string>();
@@ -313,6 +317,7 @@ export const LogsPage: React.FC = () => {
             <Table size="small">
               <TableHead>
                 <TableRow>
+                  <TableCell padding="none" sx={{ width: 32 }} />
                   {([['timestamp', 'Timestamp'], ['severity', 'Severity'], ['service', 'Service'], ['body', 'Body']] as [string, string][]).map(([field, label]) => (
                     <TableCell key={field} sortDirection={sortField === field ? sortDir : false}>
                       <TableSortLabel
@@ -331,35 +336,59 @@ export const LogsPage: React.FC = () => {
               <TableBody>
                 {logs.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} align="center">
+                    <TableCell colSpan={7} align="center">
                       <Typography color="text.secondary" variant="body2" py={3}>No logs found</Typography>
                     </TableCell>
                   </TableRow>
                 ) : logs.map((log, idx) => {
                   const sev = severityLabel(log.severity_text, log.severity_number);
+                  const expanded = expandedRows.has(idx);
+                  const toggle = () => setExpandedRows(prev => {
+                    const next = new Set(prev);
+                    next.has(idx) ? next.delete(idx) : next.add(idx);
+                    return next;
+                  });
                   return (
-                    <TableRow key={idx} hover>
-                      <TableCell sx={{ whiteSpace: 'nowrap', fontFamily: 'monospace', fontSize: 12 }}>
-                        {fmtTs(log.timestamp_unix_nano)}
-                      </TableCell>
-                      <TableCell>
-                        <Chip label={sev} size="small" color={SEVERITY_COLORS[sev] ?? 'default'} />
-                      </TableCell>
-                      <TableCell sx={{ fontSize: 12 }}>{log.service_name}</TableCell>
-                      <TableCell sx={{ maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12 }}>
-                        {log.body}
-                      </TableCell>
-                      <TableCell sx={{ fontFamily: 'monospace', fontSize: 11 }}>
-                        {log.trace_id ? (
-                          <Link to={`/traces/${log.trace_id}`} style={{ color: 'inherit' }}>
-                            {log.trace_id.slice(0, 16)}…
-                          </Link>
-                        ) : '—'}
-                      </TableCell>
-                      <TableCell sx={{ fontFamily: 'monospace', fontSize: 11 }}>
-                        {log.span_id ? log.span_id.slice(0, 16) : '—'}
-                      </TableCell>
-                    </TableRow>
+                    <React.Fragment key={idx}>
+                      <TableRow hover onClick={toggle} sx={{ cursor: 'pointer' }}>
+                        <TableCell padding="none" sx={{ width: 32, pl: 0.5 }}>
+                          <IconButton size="small">
+                            {expanded ? <KeyboardArrowDownIcon fontSize="small" /> : <KeyboardArrowRightIcon fontSize="small" />}
+                          </IconButton>
+                        </TableCell>
+                        <TableCell sx={{ whiteSpace: 'nowrap', fontFamily: 'monospace', fontSize: 12 }}>
+                          {fmtTs(log.timestamp_unix_nano)}
+                        </TableCell>
+                        <TableCell>
+                          <Chip label={sev} size="small" color={SEVERITY_COLORS[sev] ?? 'default'} />
+                        </TableCell>
+                        <TableCell sx={{ fontSize: 12 }}>{log.service_name}</TableCell>
+                        <TableCell sx={{ maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12 }}>
+                          {log.body}
+                        </TableCell>
+                        <TableCell sx={{ fontFamily: 'monospace', fontSize: 11 }}>
+                          {log.trace_id ? (
+                            <Link to={`/traces/${log.trace_id}`} style={{ color: 'inherit' }} onClick={e => e.stopPropagation()}>
+                              {log.trace_id.slice(0, 16)}…
+                            </Link>
+                          ) : '—'}
+                        </TableCell>
+                        <TableCell sx={{ fontFamily: 'monospace', fontSize: 11 }}>
+                          {log.span_id ? log.span_id.slice(0, 16) : '—'}
+                        </TableCell>
+                      </TableRow>
+                      {expanded && (
+                        <TableRow>
+                          <TableCell colSpan={7} sx={{ py: 0, bgcolor: 'action.hover' }}>
+                            <Collapse in={expanded} unmountOnExit>
+                              <Box sx={{ p: 1.5, fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                                {log.body}
+                              </Box>
+                            </Collapse>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </React.Fragment>
                   );
                 })}
               </TableBody>
