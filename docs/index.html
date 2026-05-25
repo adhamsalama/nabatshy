@@ -450,7 +450,7 @@
     <a href="https://github.com/adhamsalama/nabatshy" class="btn btn-outline">View on GitHub</a>
   </div>
   <div class="install-snippet" onclick="copyInstall(this)" title="Click to copy">
-    <span>go install github.com/adhamsalama/nabatshy@latest</span>
+    <span>docker run -p 4318:4318 -p 3000:3000 -p 8081:8081 adham99/nabatshy</span>
     <span class="copy-icon">⎘ copy</span>
   </div>
 </div>
@@ -610,7 +610,11 @@
 <span class="code-comment"># Servers now running:</span>
 <span class="code-comment">#   OTLP collector → :4318</span>
 <span class="code-comment">#   Query API      → :3000</span>
-<span class="code-comment">#   UI             → :8081</span></pre>
+<span class="code-comment">#   UI             → :8081</span>
+
+<span class="code-comment"># Or use the pre-built Docker image:</span>
+<span class="code-cmd">docker</span> run -p 4318:4318 -p 3000:3000 -p 8081:8081 \
+  -v $(pwd)/data:/data <span class="code-str">adham99/nabatshy</span></pre>
     </div>
   </div>
 </section>

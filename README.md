@@ -50,6 +50,14 @@ Your services send telemetry to `http://localhost:4318` using any OpenTelemetry 
 
 ## Quick Start
 
+**Docker (recommended):**
+
+```bash
+docker run -p 4318:4318 -p 3000:3000 -p 8081:8081 -v $(pwd)/data:/data adham99/nabatshy
+```
+
+**Build from source:**
+
 ```bash
 # 1. Clone and install frontend dependencies
 git clone https://github.com/adhamsalama/nabatshy
@@ -64,13 +72,6 @@ go build -ldflags="-s -w"
 ```
 
 Then point your OpenTelemetry SDK at `http://localhost:4318` and open `http://localhost:8081`.
-
-## Docker
-
-```bash
-docker build -t nabatshy .
-docker run -p 4318:4318 -p 3000:3000 -p 8081:8081 -v $(pwd)/data:/data nabatshy
-```
 
 ## Configuration
 
