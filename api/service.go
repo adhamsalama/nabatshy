@@ -1793,13 +1793,16 @@ type LogRow struct {
 	ResourceAttributes map[string]string `json:"resource_attributes"`
 }
 
-func (s *TelemetryService) GetLogs(ctx context.Context, dr DateRange, spanID, service, severity, body string, page, pageSize int) ([]LogRow, error) {
+func (s *TelemetryService) GetLogs(ctx context.Context, dr DateRange, traceID, spanID, service, severity, body string, page, pageSize int) ([]LogRow, error) {
 	var conds []string
 	var args []any
 
 	if spanID != "" {
 		conds = append(conds, "span_id = ?")
 		args = append(args, spanID)
+	} else if traceID != "" {
+		conds = append(conds, "trace_id = ?")
+		args = append(args, traceID)
 	} else {
 		conds = append(conds, "timestamp_unix_nano >= ?", "timestamp_unix_nano <= ?")
 		args = append(args, dr.Start.UnixNano(), dr.End.UnixNano())

@@ -14,11 +14,14 @@ import {
   CircularProgress,
   Box,
   Chip,
-  Tooltip
+  Tooltip,
+  Tabs,
+  Tab,
 } from '@mui/material';
 import ErrorIcon from '@mui/icons-material/Error';
 import { SpanDetails, SpanDetail } from './SpanDetails';
 import TraceMetricsPanel from './TraceMetricsPanel';
+import SpanLogsPanel from './SpanLogsPanel';
 import { config } from "../config.ts";
 
 interface SpanEvent {
@@ -53,6 +56,7 @@ export const TraceDetails = ({ traceId: traceIdProp, initialSpanId, onAddToSearc
   const [spanDetail, setSpanDetail] = useState<SpanDetail | null>(null);
   const [spanDetailLoading, setSpanDetailLoading] = useState(false);
   const [spanDetailError, setSpanDetailError] = useState<string | null>(null);
+  const [tab, setTab] = useState(0);
 
   useEffect(() => {
     const fetchTraceDetails = async () => {
@@ -138,6 +142,14 @@ export const TraceDetails = ({ traceId: traceIdProp, initialSpanId, onAddToSearc
       <Typography variant="h5" gutterBottom>
         Trace Details: {traceId}
       </Typography>
+      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
+        <Tab label="Spans" />
+        <Tab label="Logs" />
+      </Tabs>
+      {tab === 1 && (
+        <SpanLogsPanel traceId={traceId} title="Trace Logs" />
+      )}
+      {tab === 0 && <>
       {SHOW_SPAN_TABLE && <TableContainer component={Paper}>
         <Table>
           <TableHead>
@@ -219,6 +231,7 @@ export const TraceDetails = ({ traceId: traceIdProp, initialSpanId, onAddToSearc
           serviceName={rootSpan.Service}
         />
       )}
+      </>}
     </Container>
   );
 };

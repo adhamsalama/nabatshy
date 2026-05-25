@@ -507,7 +507,7 @@ func (c *TelemetryController) getLogs(w http.ResponseWriter, r *http.Request) {
 	pageSize, _ := strconv.Atoi(q.Get("pageSize"))
 
 	rows, err := c.service.GetLogs(r.Context(), dr,
-		q.Get("span_id"), q.Get("service"), q.Get("severity"), q.Get("body"),
+		q.Get("trace_id"), q.Get("span_id"), q.Get("service"), q.Get("severity"), q.Get("body"),
 		page, pageSize,
 	)
 	if err != nil {
