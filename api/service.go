@@ -1536,12 +1536,24 @@ type OtelMetricRow struct {
 	ResourceAttributes     map[string]string `json:"resource_attributes"`
 }
 
-func (s *TelemetryService) GetOtelMetrics(ctx context.Context, limit int, metricName string) ([]OtelMetricRow, error) {
-	where := ""
-	args := []any{}
+func (s *TelemetryService) GetOtelMetrics(ctx context.Context, limit int, metricName string, dr *DateRange) ([]OtelMetricRow, error) {
+	var conds []string
+	var args []any
+
 	if metricName != "" {
-		where = "WHERE metric_name = ?"
+		conds = append(conds, "metric_name = ?")
 		args = append(args, metricName)
+	}
+	if dr != nil {
+		conds = append(conds, "time_unix_nano >= ?")
+		args = append(args, dr.Start.UnixNano())
+		conds = append(conds, "time_unix_nano <= ?")
+		args = append(args, dr.End.UnixNano())
+	}
+
+	where := ""
+	if len(conds) > 0 {
+		where = "WHERE " + strings.Join(conds, " AND ")
 	}
 
 	query := fmt.Sprintf(`
@@ -1598,4 +1610,172 @@ func (s *TelemetryService) GetOtelMetrics(ctx context.Context, limit int, metric
 		return nil, fmt.Errorf("rows error: %w", err)
 	}
 	return results, nil
+}
+
+// --- metric names ---
+
+type OtelMetricNameRow struct {
+	MetricName    string   `json:"metric_name"`
+	MetricType    string   `json:"metric_type"`
+	MetricUnit    string   `json:"metric_unit"`
+	ScopeName     string   `json:"scope_name"`
+	Count         int64    `json:"count"`
+	AttributeKeys []string `json:"attribute_keys"`
+}
+
+func (s *TelemetryService) GetOtelMetricNames(ctx context.Context) ([]OtelMetricNameRow, error) {
+	query := `
+		SELECT
+			metric_name,
+			metric_type,
+			metric_unit,
+			scope_name,
+			COUNT(*) AS count,
+			list_distinct(flatten(list(attributes_key))) AS attribute_keys
+		FROM metric_data_point
+		GROUP BY metric_name, metric_type, metric_unit, scope_name
+		ORDER BY metric_name
+	`
+	rows, err := s.Ch.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("query error: %w", err)
+	}
+	defer rows.Close()
+
+	var results []OtelMetricNameRow
+	for rows.Next() {
+		var r OtelMetricNameRow
+		var attrKeys utils.StringSlice
+		if err := rows.Scan(&r.MetricName, &r.MetricType, &r.MetricUnit, &r.ScopeName, &r.Count, &attrKeys); err != nil {
+			return nil, fmt.Errorf("scan error: %w", err)
+		}
+		r.AttributeKeys = []string(attrKeys)
+		results = append(results, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
+	}
+	return results, nil
+}
+
+// --- metric time series ---
+
+type OtelSeriesPoint struct {
+	Time           int64   `json:"time"` // epoch milliseconds
+	Value          float64 `json:"value"`
+	HistogramCount int64   `json:"histogram_count,omitempty"`
+	HistogramSum   float64 `json:"histogram_sum,omitempty"`
+}
+
+type OtelSeries struct {
+	Labels map[string]string `json:"labels"`
+	Points []OtelSeriesPoint `json:"points"`
+}
+
+type OtelMetricSeriesResponse struct {
+	Series         []OtelSeries `json:"series"`
+	MetricType     string       `json:"metric_type"`
+	MetricUnit     string       `json:"metric_unit"`
+	BucketInterval string       `json:"bucket_interval"`
+}
+
+func (s *TelemetryService) GetOtelMetricSeries(ctx context.Context, metricName string, dr DateRange, groupBy string) (*OtelMetricSeriesResponse, error) {
+	intervalSQL := GetIntervalFromDateRange(dr)
+	startNano := dr.Start.UnixNano()
+	endNano := dr.End.UnixNano()
+
+	args := []any{}
+	var groupSelect string
+	if groupBy != "" {
+		groupSelect = "COALESCE(list_element(attributes_value, list_position(attributes_key, ?)), '')"
+		args = append(args, groupBy)
+	} else {
+		groupSelect = "''"
+	}
+	args = append(args, metricName, startNano, endNano)
+
+	query := fmt.Sprintf(`
+		SELECT
+			epoch_ms(time_bucket(INTERVAL '%s', to_timestamp(time_unix_nano / 1000000000.0))) AS bucket_ms,
+			%s AS group_label,
+			AVG(CASE WHEN value_double != 0 THEN value_double ELSE CAST(value_int AS DOUBLE) END) AS avg_value,
+			CAST(SUM(histogram_count) AS BIGINT) AS hist_count,
+			SUM(histogram_sum) AS hist_sum,
+			ANY_VALUE(metric_type) AS metric_type,
+			ANY_VALUE(metric_unit) AS metric_unit
+		FROM metric_data_point
+		WHERE metric_name = ?
+		  AND time_unix_nano >= ?
+		  AND time_unix_nano <= ?
+		GROUP BY bucket_ms, group_label
+		ORDER BY bucket_ms, group_label
+	`, intervalSQL, groupSelect)
+
+	rows, err := s.Ch.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query error: %w", err)
+	}
+	defer rows.Close()
+
+	seriesMap := make(map[string][]OtelSeriesPoint)
+	var labelOrder []string
+	var lastMetricType, lastMetricUnit string
+
+	for rows.Next() {
+		var bucketMs int64
+		var groupLabel string
+		var avgValue, histSum float64
+		var histCount int64
+		var metricType, metricUnit string
+
+		if err := rows.Scan(&bucketMs, &groupLabel, &avgValue, &histCount, &histSum, &metricType, &metricUnit); err != nil {
+			return nil, fmt.Errorf("scan error: %w", err)
+		}
+		lastMetricType = metricType
+		lastMetricUnit = metricUnit
+
+		var value float64
+		if metricType == "histogram" {
+			if histCount > 0 {
+				value = histSum / float64(histCount)
+			}
+		} else {
+			value = avgValue
+		}
+
+		if _, seen := seriesMap[groupLabel]; !seen {
+			labelOrder = append(labelOrder, groupLabel)
+		}
+		seriesMap[groupLabel] = append(seriesMap[groupLabel], OtelSeriesPoint{
+			Time:           bucketMs,
+			Value:          value,
+			HistogramCount: histCount,
+			HistogramSum:   histSum,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
+	}
+
+	var series []OtelSeries
+	for _, label := range labelOrder {
+		labels := map[string]string{}
+		if groupBy != "" && label != "" {
+			labels[groupBy] = label
+		}
+		series = append(series, OtelSeries{
+			Labels: labels,
+			Points: seriesMap[label],
+		})
+	}
+	if series == nil {
+		series = []OtelSeries{}
+	}
+
+	return &OtelMetricSeriesResponse{
+		Series:         series,
+		MetricType:     lastMetricType,
+		MetricUnit:     lastMetricUnit,
+		BucketInterval: intervalSQL,
+	}, nil
 }

@@ -437,7 +437,15 @@ func (c *TelemetryController) getOtelMetrics(w http.ResponseWriter, r *http.Requ
 
 	metricName := r.URL.Query().Get("metric_name")
 
-	rows, err := c.service.GetOtelMetrics(r.Context(), limit, metricName)
+	var drPtr *DateRange
+	if r.URL.Query().Get("start") != "" || r.URL.Query().Get("time_range") != "" {
+		dr, parseErr := ParseDateRange(r.URL.Query(), "start", "end", "time_range")
+		if parseErr == nil {
+			drPtr = &dr
+		}
+	}
+
+	rows, err := c.service.GetOtelMetrics(r.Context(), limit, metricName, drPtr)
 	if err != nil {
 		http.Error(w, "failed to fetch metrics: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -445,6 +453,46 @@ func (c *TelemetryController) getOtelMetrics(w http.ResponseWriter, r *http.Requ
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(rows)
+}
+
+func (c *TelemetryController) getOtelMetricNames(w http.ResponseWriter, r *http.Request) {
+	results, err := c.service.GetOtelMetricNames(r.Context())
+	if err != nil {
+		http.Error(w, "failed to fetch metric names: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(results)
+}
+
+func (c *TelemetryController) getOtelMetricSeries(w http.ResponseWriter, r *http.Request) {
+	metricName := r.URL.Query().Get("metric_name")
+	if metricName == "" {
+		http.Error(w, "metric_name is required", http.StatusBadRequest)
+		return
+	}
+
+	var dr DateRange
+	if r.URL.Query().Get("start") != "" || r.URL.Query().Get("time_range") != "" {
+		var parseErr error
+		dr, parseErr = ParseDateRange(r.URL.Query(), "start", "end", "time_range")
+		if parseErr != nil {
+			http.Error(w, parseErr.Error(), http.StatusBadRequest)
+			return
+		}
+	} else {
+		dr = DateRange{Start: time.Now().Add(-time.Hour), End: time.Now()}
+	}
+
+	groupBy := r.URL.Query().Get("group_by")
+
+	result, err := c.service.GetOtelMetricSeries(r.Context(), metricName, dr, groupBy)
+	if err != nil {
+		http.Error(w, "failed to fetch metric series: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
 }
 
 func (c *TelemetryController) RegisterRoutes(r chi.Router) {
@@ -465,6 +513,8 @@ func (c *TelemetryController) RegisterRoutes(r chi.Router) {
 	r.Get("/api/metrics/errors", c.getErrorCounts)
 	r.Get("/api/metrics/search", c.getSearchMetrics)
 	r.Get("/api/services", c.getUniqueServiceNames)
+	r.Get("/api/otel-metrics/names", c.getOtelMetricNames)
+	r.Get("/api/otel-metrics/series", c.getOtelMetricSeries)
 	r.Get("/api/otel-metrics", c.getOtelMetrics)
 	r.Get("/debug/query", c.debugQuery)
 }
