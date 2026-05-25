@@ -308,7 +308,48 @@ func (s *TelemetryService) GetTraceDetails(ctx context.Context, traceID string) 
 
 		spans = append(spans, s)
 	}
-	return spans, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return treeOrderSpans(spans), nil
+}
+
+func treeOrderSpans(spans []TraceSpan) []TraceSpan {
+	children := make(map[string][]TraceSpan, len(spans))
+	var root TraceSpan
+	found := false
+	for _, sp := range spans {
+		if sp.ParentSpanID == "" {
+			root = sp
+			found = true
+		} else {
+			children[sp.ParentSpanID] = append(children[sp.ParentSpanID], sp)
+		}
+	}
+	if !found {
+		return spans
+	}
+	result := make([]TraceSpan, 0, len(spans))
+	queue := []TraceSpan{root}
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		result = append(result, cur)
+		queue = append(queue, children[cur.SpanID]...)
+	}
+	// append any orphaned spans not reachable from root
+	if len(result) < len(spans) {
+		inResult := make(map[string]bool, len(result))
+		for _, sp := range result {
+			inResult[sp.SpanID] = true
+		}
+		for _, sp := range spans {
+			if !inResult[sp.SpanID] {
+				result = append(result, sp)
+			}
+		}
+	}
+	return result
 }
 
 func (s *TelemetryService) GetEndpointLatencies(ctx context.Context) ([]EndpointLatency, error) {
