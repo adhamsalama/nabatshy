@@ -147,6 +147,7 @@ export const SearchPage: React.FC = () => {
     service = selectedService,
     traceOrSpanValue = traceOrSpan,
     preset = timePreset,
+    silent = false,
   ) => {
     const resolvedStart = preset !== 'custom' ? getPresetDates(preset).start : start;
     const resolvedEnd   = preset !== 'custom' ? getPresetDates(preset).end   : end;
@@ -189,9 +190,8 @@ export const SearchPage: React.FC = () => {
     if (service) {
       urlParams.service = service;
     }
-    setSearchParams(urlParams);
-    setLoading(true);
-    setError(null);
+    if (!silent) setSearchParams(urlParams);
+    if (!silent) { setLoading(true); setError(null); }
 
     try {
       const searchUrl = new URL(`${config.backendUrl}/v1/search`);
@@ -221,11 +221,13 @@ export const SearchPage: React.FC = () => {
         setTraceCountSeries([]);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
-      setSearchResponse(null);
-      setTraceCountSeries([]);
+      if (!silent) {
+        setError(err instanceof Error ? err.message : 'An error occurred');
+        setSearchResponse(null);
+        setTraceCountSeries([]);
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -234,9 +236,15 @@ export const SearchPage: React.FC = () => {
     handleSearchRef.current = handleSearch;
   });
 
+  const silentRefreshRef = useRef(() => {});
+  useEffect(() => {
+    silentRefreshRef.current = () =>
+      handleSearch(1, query, pageSize, sortField, sortOrder, startDate, endDate, selectedService, traceOrSpan, timePreset, true);
+  });
+
   useEffect(() => {
     if (!autoRefresh) return;
-    const id = setInterval(() => handleSearchRef.current(1), refreshIntervalSecs * 1000);
+    const id = setInterval(() => silentRefreshRef.current(), refreshIntervalSecs * 1000);
     return () => clearInterval(id);
   }, [autoRefresh, refreshIntervalSecs]);
 
