@@ -17,6 +17,66 @@ function App() {
   const theme = createTheme({
     palette: {
       mode: darkMode ? 'dark' : 'light',
+      primary: {
+        main: '#2C6B6B',
+        light: '#3d8f8f',
+        dark: '#1e4d4d',
+        contrastText: '#ffffff',
+      },
+      background: darkMode
+        ? { default: '#121212', paper: '#1e1e1e' }
+        : { default: '#f5f7f7', paper: '#ffffff' },
+    },
+    typography: {
+      fontFamily: '"Inter", "system-ui", "-apple-system", sans-serif',
+    },
+    shape: {
+      borderRadius: 8,
+    },
+    components: {
+      MuiButton: {
+        defaultProps: { disableElevation: true },
+        styleOverrides: {
+          root: { textTransform: 'none', fontWeight: 500 },
+        },
+      },
+      MuiChip: {
+        styleOverrides: {
+          root: { fontWeight: 500 },
+        },
+      },
+      MuiCard: {
+        defaultProps: { elevation: 0 },
+        styleOverrides: {
+          root: ({ theme }) => ({
+            border: `1px solid ${theme.palette.divider}`,
+          }),
+        },
+      },
+      MuiPaper: {
+        defaultProps: { elevation: 0 },
+        styleOverrides: {
+          root: ({ theme }) => ({
+            border: `1px solid ${theme.palette.divider}`,
+          }),
+        },
+      },
+      MuiTableHead: {
+        styleOverrides: {
+          root: ({ theme }) => ({
+            backgroundColor: theme.palette.mode === 'dark'
+              ? 'rgba(44, 107, 107, 0.15)'
+              : 'rgba(44, 107, 107, 0.06)',
+            '& .MuiTableCell-root': {
+              fontWeight: 600,
+              fontSize: '0.75rem',
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+              color: theme.palette.text.secondary,
+            },
+          }),
+        },
+      },
     },
   });
 
