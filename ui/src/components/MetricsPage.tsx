@@ -242,7 +242,7 @@ export const MetricsPage: React.FC = () => {
 
   // ── fetch series + raw data ───────────────────────────────────────────────
 
-  const fetchData = useCallback(async (overrideStart?: Date, overrideEnd?: Date) => {
+  const fetchData = useCallback(async (overrideStart?: Date, overrideEnd?: Date, silent = false) => {
     if (!selectedMetric) { setSeriesData(null); setRawRows([]); return; }
 
     const { start: rs, end: re } = getDateRange();
@@ -250,7 +250,7 @@ export const MetricsPage: React.FC = () => {
     const end   = overrideEnd   ?? re;
     if (isNaN(start.getTime()) || isNaN(end.getTime())) { setError('Invalid date range'); return; }
 
-    setLoading(true);
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const base = new URLSearchParams({
@@ -276,17 +276,17 @@ export const MetricsPage: React.FC = () => {
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'An error occurred');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [selectedMetric, groupBy, getDateRange]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const fetchRef = useRef(fetchData);
-  useEffect(() => { fetchRef.current = fetchData; });
+  const silentFetchRef = useRef(() => {});
+  useEffect(() => { silentFetchRef.current = () => fetchData(undefined, undefined, true); });
   useEffect(() => {
     if (!autoRefresh) return;
-    const id = setInterval(() => fetchRef.current(), refreshInterval * 1000);
+    const id = setInterval(() => silentFetchRef.current(), refreshInterval * 1000);
     return () => clearInterval(id);
   }, [autoRefresh, refreshInterval]);
 
@@ -325,7 +325,7 @@ export const MetricsPage: React.FC = () => {
     setCustomEnd(e);
     setTimePresetIdx(customIdx);
     pushUrl({ customStart: s, customEnd: e, timePresetIdx: customIdx });
-    fetchRef.current(s, e);
+    fetchData(s, e);
   }, [pushUrl]);
 
   // ── filter chips ──────────────────────────────────────────────────────────

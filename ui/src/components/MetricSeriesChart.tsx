@@ -2,8 +2,13 @@ import React from 'react';
 import { Card, CardContent, Typography, Box } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import {
-  ResponsiveContainer, LineChart, CartesianGrid, XAxis, YAxis,
-  Tooltip as ReTooltip, Legend, Line, ReferenceArea,
+  ResponsiveContainer,
+  LineChart, Line,
+  AreaChart, Area,
+  BarChart, Bar,
+  CartesianGrid, XAxis, YAxis,
+  Tooltip as ReTooltip, Legend,
+  ReferenceArea,
 } from 'recharts';
 import { useChartBrush } from '../hooks/useChartBrush';
 
@@ -35,7 +40,7 @@ function seriesKey(labels: Record<string, string>): string {
   return entries.map(([, v]) => v).join(' · ');
 }
 
-function buildChartData(series: MetricSeries[]): Record<string, unknown>[] {
+function buildChartData(series: MetricSeries[], metricType: string): Record<string, unknown>[] {
   const timeSet = new Set<number>();
   series.forEach(s => s.points.forEach(p => timeSet.add(p.time)));
   const times = Array.from(timeSet).sort((a, b) => a - b);
@@ -45,16 +50,25 @@ function buildChartData(series: MetricSeries[]): Record<string, unknown>[] {
     series.forEach(s => {
       const key = seriesKey(s.labels);
       const pt = s.points.find(p => p.time === t);
-      row[key] = pt !== undefined ? pt.value : null;
+      if (metricType === 'histogram') {
+        // bar height = request count; keep avg in a separate key for tooltip
+        row[key] = pt !== undefined ? (pt.histogram_count ?? 0) : null;
+        row[`${key}__avg`] = pt !== undefined ? pt.value : null;
+      } else {
+        row[key] = pt !== undefined ? pt.value : null;
+      }
     });
     return row;
   });
 }
 
-function yLabel(metricType: string, unit: string): string {
-  if (metricType === 'histogram') return unit ? `avg (${unit})` : 'avg';
-  return unit || '';
-}
+const tickFmt = (v: unknown) => {
+  if (typeof v !== 'number') return String(v);
+  if (Math.abs(v) >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
+  if (Math.abs(v) >= 1e3) return `${(v / 1e3).toFixed(1)}k`;
+  if (Math.abs(v) < 0.001 && v !== 0) return v.toExponential(1);
+  return v.toFixed(v < 1 ? 3 : 1);
+};
 
 const MetricSeriesChart: React.FC<Props> = ({ series, unit, metricType, title, onRangeSelect }) => {
   const theme = useTheme();
@@ -65,75 +79,116 @@ const MetricSeriesChart: React.FC<Props> = ({ series, unit, metricType, title, o
   };
   const { onMouseDown, onMouseMove, onMouseUp, refLeft, refRight, selecting } = useChartBrush(onRangeSelect);
 
-  const data = buildChartData(series);
+  const data = buildChartData(series, metricType);
   const keys = series.map(s => seriesKey(s.labels));
-  const unitLabel = yLabel(metricType, unit);
+  const brushProps = { onMouseDown, onMouseMove, onMouseUp, onMouseLeave: onMouseUp };
+
+  const yAxisLabel = metricType === 'histogram'
+    ? 'count'
+    : unit || undefined;
+
+  const yAxis = (
+    <YAxis
+      domain={[0, 'auto']}
+      width={70}
+      tickFormatter={tickFmt}
+      label={yAxisLabel ? { value: yAxisLabel, angle: -90, position: 'insideLeft', offset: 10, style: { fontSize: 11, fill: theme.palette.text.secondary } } : undefined}
+    />
+  );
+
+  const xAxis = (
+    <XAxis
+      dataKey="time"
+      tickFormatter={v => new Date(v as string).toLocaleTimeString()}
+      minTickGap={40}
+    />
+  );
+
+  const tooltip = !selecting ? (
+    <ReTooltip
+      contentStyle={tooltipStyle}
+      labelFormatter={v => new Date(v as string).toLocaleString()}
+      formatter={(val, name: string) => {
+        if (name.endsWith('__avg')) return null as unknown as [string, string];
+        if (metricType === 'histogram') {
+          return [`${typeof val === 'number' ? val.toLocaleString() : '—'} requests`, name];
+        }
+        return [
+          typeof val === 'number' ? `${tickFmt(val)}${unit ? ' ' + unit : ''}` : '—',
+          name,
+        ];
+      }}
+    />
+  ) : null;
+
+  const refArea = selecting && refLeft && refRight ? (
+    <ReferenceArea x1={refLeft} x2={refRight} fill={COLORS[0]} fillOpacity={0.2} strokeOpacity={0.5} />
+  ) : null;
+
+  const cursorStyle = onRangeSelect
+    ? { cursor: selecting ? 'col-resize' : 'crosshair', userSelect: 'none' as const }
+    : {};
 
   return (
     <Card>
       <CardContent>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
           <Typography variant="h6">{title || 'Metric Over Time'}</Typography>
-          {onRangeSelect && (
-            <Typography variant="caption" color="text.secondary">drag to zoom</Typography>
-          )}
+          <Typography variant="caption" color="text.secondary">
+            {metricType === 'gauge' && 'line chart · instantaneous value'}
+            {metricType === 'sum' && 'area chart · cumulative value'}
+            {metricType === 'histogram' && 'bar chart · request count per bucket'}
+            {onRangeSelect && ' · drag to zoom'}
+          </Typography>
         </Box>
-        <Box
-          height={320}
-          sx={onRangeSelect ? { cursor: selecting ? 'col-resize' : 'crosshair', userSelect: 'none' } : {}}
-        >
+
+        <Box height={320} sx={cursorStyle}>
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart
-              data={data}
-              onMouseDown={onMouseDown}
-              onMouseMove={onMouseMove}
-              onMouseUp={onMouseUp}
-              onMouseLeave={onMouseUp}
-            >
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis
-                dataKey="time"
-                tickFormatter={v => new Date(v as string).toLocaleTimeString()}
-                minTickGap={40}
-              />
-              <YAxis
-                domain={[0, 'auto']}
-                width={70}
-                tickFormatter={v => {
-                  if (typeof v !== 'number') return String(v);
-                  if (Math.abs(v) >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
-                  if (Math.abs(v) >= 1e3) return `${(v / 1e3).toFixed(1)}k`;
-                  if (Math.abs(v) < 0.001 && v !== 0) return v.toExponential(1);
-                  return v.toFixed(v < 1 ? 3 : 1);
-                }}
-                label={unitLabel ? { value: unitLabel, angle: -90, position: 'insideLeft', offset: 10, style: { fontSize: 11, fill: theme.palette.text.secondary } } : undefined}
-              />
-              {!selecting && (
-                <ReTooltip
-                  contentStyle={tooltipStyle}
-                  labelFormatter={v => new Date(v as string).toLocaleString()}
-                  formatter={(val, name) => [
-                    typeof val === 'number' ? `${val.toFixed(4)}${unitLabel ? ' ' + unitLabel : ''}` : '—',
-                    name,
-                  ]}
-                />
-              )}
-              <Legend />
-              {keys.map((key, i) => (
-                <Line
-                  key={key}
-                  type="monotone"
-                  dataKey={key}
-                  stroke={COLORS[i % COLORS.length]}
-                  dot={false}
-                  connectNulls
-                  strokeWidth={1.5}
-                />
-              ))}
-              {selecting && refLeft && refRight && (
-                <ReferenceArea x1={refLeft} x2={refRight} fill={COLORS[0]} fillOpacity={0.2} strokeOpacity={0.5} />
-              )}
-            </LineChart>
+
+            {/* ── gauge: line chart ── */}
+            {metricType === 'gauge' ? (
+              <LineChart data={data} {...brushProps}>
+                <CartesianGrid strokeDasharray="3 3" />
+                {xAxis}{yAxis}{tooltip}<Legend />
+                {keys.map((key, i) => (
+                  <Line key={key} type="monotone" dataKey={key} stroke={COLORS[i % COLORS.length]} dot={false} connectNulls strokeWidth={1.5} />
+                ))}
+                {refArea}
+              </LineChart>
+
+            /* ── sum: area chart ── */
+            ) : metricType === 'sum' ? (
+              <AreaChart data={data} {...brushProps}>
+                <CartesianGrid strokeDasharray="3 3" />
+                {xAxis}{yAxis}{tooltip}<Legend />
+                {keys.map((key, i) => (
+                  <Area
+                    key={key}
+                    type="monotone"
+                    dataKey={key}
+                    stroke={COLORS[i % COLORS.length]}
+                    fill={COLORS[i % COLORS.length]}
+                    fillOpacity={0.15}
+                    dot={false}
+                    connectNulls
+                    strokeWidth={1.5}
+                  />
+                ))}
+                {refArea}
+              </AreaChart>
+
+            /* ── histogram: bar chart (count per bucket) ── */
+            ) : (
+              <BarChart data={data} {...brushProps}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                {xAxis}{yAxis}{tooltip}<Legend />
+                {keys.map((key, i) => (
+                  <Bar key={key} dataKey={key} fill={COLORS[i % COLORS.length]} fillOpacity={0.8} maxBarSize={40} />
+                ))}
+                {refArea}
+              </BarChart>
+            )}
+
           </ResponsiveContainer>
         </Box>
       </CardContent>
