@@ -21,8 +21,10 @@ import {
   Chip,
   Drawer,
   IconButton,
+  TextField,
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import { format } from 'date-fns';
 import CloseIcon from '@mui/icons-material/Close';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import PercentileChart, { TimePercentile } from './PercentileChart';
@@ -41,6 +43,7 @@ const TIME_PRESETS = [
   { label: 'Last 1h',  minutes: 60 },
   { label: 'Last 3h',  minutes: 180 },
   { label: 'Last 24h', minutes: 1440 },
+  { label: 'Custom',   minutes: 0 },
 ];
 
 const REFRESH_INTERVALS = [
@@ -93,12 +96,16 @@ export const MonitoringPage: React.FC = () => {
   const [traceOrSpan, setTraceOrSpan] = useState<'trace' | 'span'>('trace');
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [refreshInterval, setRefreshInterval] = useState(30);
+  const [customStart, setCustomStart] = useState(() => new Date(Date.now() - 60 * 60 * 1000));
+  const [customEnd, setCustomEnd] = useState(() => new Date());
+  const isCustom = TIME_PRESETS[timePresetIdx].label === 'Custom';
 
   const getDateRange = useCallback(() => {
+    if (isCustom) return { start: customStart, end: customEnd };
     const end = new Date();
     const start = new Date(end.getTime() - TIME_PRESETS[timePresetIdx].minutes * 60 * 1000);
     return { start, end };
-  }, [timePresetIdx]);
+  }, [timePresetIdx, isCustom, customStart, customEnd]);
 
   const fetchMetrics = useCallback(async () => {
     const { start, end } = getDateRange();
@@ -181,6 +188,29 @@ export const MonitoringPage: React.FC = () => {
             {TIME_PRESETS.map((p, i) => <MenuItem key={i} value={i}>{p.label}</MenuItem>)}
           </Select>
         </FormControl>
+
+        {isCustom && (
+          <>
+            <TextField
+              label="Start Time"
+              type="datetime-local"
+              size="small"
+              value={format(customStart, "yyyy-MM-dd'T'HH:mm:ss")}
+              onChange={e => setCustomStart(new Date(e.target.value))}
+              InputLabelProps={{ shrink: true }}
+              inputProps={{ step: 1 }}
+            />
+            <TextField
+              label="End Time"
+              type="datetime-local"
+              size="small"
+              value={format(customEnd, "yyyy-MM-dd'T'HH:mm:ss")}
+              onChange={e => setCustomEnd(new Date(e.target.value))}
+              InputLabelProps={{ shrink: true }}
+              inputProps={{ step: 1 }}
+            />
+          </>
+        )}
 
         <FormControl size="small" sx={{ minWidth: 120 }}>
           <InputLabel>Percentile</InputLabel>
