@@ -38,6 +38,6 @@ func Run(db *sql.DB) {
 	cronController := NewCronController(db)
 	cronController.RegisterRoutes(r)
 	addr := ":3000"
-	log.Printf("listening on %s\n", addr)
+	log.Printf("[api] listening on %s\n", addr)
 	log.Fatal(http.ListenAndServe(addr, r))
 }

@@ -303,6 +303,6 @@ func Run(db *sql.DB) {
 
 	telController.RegisterRoutes(r)
 	addr := ":4318"
-	log.Printf("listening on %s\n", addr)
+	log.Printf("[otel] listening on %s\n", addr)
 	log.Fatal(http.ListenAndServe(addr, r))
 }

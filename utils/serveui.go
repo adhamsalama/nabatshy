@@ -68,6 +68,6 @@ func ServeUI(content embed.FS, uiDir string) {
 
 	addr := ":8081"
 
-	log.Printf("listening on %s\n", addr)
+	log.Printf("[ui] listening on %s\n", addr)
 	log.Fatal(http.ListenAndServe(addr, r))
 }
