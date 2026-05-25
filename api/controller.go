@@ -508,6 +508,7 @@ func (c *TelemetryController) getLogs(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := c.service.GetLogs(r.Context(), dr,
 		q.Get("trace_id"), q.Get("span_id"), q.Get("service"), q.Get("severity"), q.Get("body"),
+		q.Get("sort"), q.Get("sort_dir"),
 		page, pageSize,
 	)
 	if err != nil {

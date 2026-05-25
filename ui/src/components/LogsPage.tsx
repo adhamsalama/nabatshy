@@ -3,7 +3,7 @@ import {
   Box, Typography, CircularProgress, Select, MenuItem, FormControl,
   InputLabel, Button, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Paper, Chip, TextField, Switch,
-  TablePagination,
+  TablePagination, TableSortLabel,
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { Link, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
@@ -113,6 +113,8 @@ export const LogsPage: React.FC = () => {
   const [body, setBody] = useState(() => initParam(searchParams, 'body', ''));
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(50);
+  const [sortField, setSortField] = useState('timestamp');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [refreshIntervalIdx, setRefreshIntervalIdx] = useState(1);
 
@@ -150,6 +152,8 @@ export const LogsPage: React.FC = () => {
     const logParams = new URLSearchParams(baseParams);
     logParams.set('page', String(page + 1));
     logParams.set('pageSize', String(pageSize));
+    logParams.set('sort', sortField);
+    logParams.set('sort_dir', sortDir);
 
     const logsReq = fetch(`${config.backendUrl}/api/logs?${logParams}`)
       .then(res => { if (!res.ok) throw new Error(`HTTP ${res.status}`); return res.json(); });
@@ -175,7 +179,7 @@ export const LogsPage: React.FC = () => {
       })
       .catch(err => setError(err.message))
       .finally(() => { if (!silent) setLoading(false); });
-  }, [timePresetIdx, customStart, customEnd, service, severity, body, page, pageSize]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [timePresetIdx, customStart, customEnd, service, severity, body, page, pageSize, sortField, sortDir]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // sync URL
   useEffect(() => {
@@ -195,6 +199,10 @@ export const LogsPage: React.FC = () => {
   }, [location.key]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    fetchLogs();
+  }, [sortField, sortDir, page, pageSize]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
     silentFetchRef.current = () => fetchLogs(true);
   }, [fetchLogs]);
 
@@ -209,6 +217,16 @@ export const LogsPage: React.FC = () => {
   }, [autoRefresh, refreshIntervalIdx]);
 
   const isCustom = TIME_PRESETS[timePresetIdx].minutes === 0;
+
+  function handleSort(field: string) {
+    if (sortField === field) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDir('desc');
+    }
+    setPage(0);
+  }
 
   return (
     <Box>
@@ -295,10 +313,17 @@ export const LogsPage: React.FC = () => {
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell>Timestamp</TableCell>
-                  <TableCell>Severity</TableCell>
-                  <TableCell>Service</TableCell>
-                  <TableCell>Body</TableCell>
+                  {([['timestamp', 'Timestamp'], ['severity', 'Severity'], ['service', 'Service'], ['body', 'Body']] as [string, string][]).map(([field, label]) => (
+                    <TableCell key={field} sortDirection={sortField === field ? sortDir : false}>
+                      <TableSortLabel
+                        active={sortField === field}
+                        direction={sortField === field ? sortDir : 'desc'}
+                        onClick={() => handleSort(field)}
+                      >
+                        {label}
+                      </TableSortLabel>
+                    </TableCell>
+                  ))}
                   <TableCell>Trace ID</TableCell>
                   <TableCell>Span ID</TableCell>
                 </TableRow>

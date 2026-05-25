@@ -1793,7 +1793,7 @@ type LogRow struct {
 	ResourceAttributes map[string]string `json:"resource_attributes"`
 }
 
-func (s *TelemetryService) GetLogs(ctx context.Context, dr DateRange, traceID, spanID, service, severity, body string, page, pageSize int) ([]LogRow, error) {
+func (s *TelemetryService) GetLogs(ctx context.Context, dr DateRange, traceID, spanID, service, severity, body, sortField, sortDir string, page, pageSize int) ([]LogRow, error) {
 	var conds []string
 	var args []any
 
@@ -1829,6 +1829,21 @@ func (s *TelemetryService) GetLogs(ctx context.Context, dr DateRange, traceID, s
 	offset := (page - 1) * pageSize
 	args = append(args, pageSize, offset)
 
+	allowedSortFields := map[string]string{
+		"timestamp": "timestamp_unix_nano",
+		"severity":  "severity_number",
+		"service":   "service_name",
+		"body":      "body",
+	}
+	orderCol := "timestamp_unix_nano"
+	if col, ok := allowedSortFields[sortField]; ok {
+		orderCol = col
+	}
+	orderDir := "DESC"
+	if sortDir == "asc" {
+		orderDir = "ASC"
+	}
+
 	query := fmt.Sprintf(`
 		SELECT
 			timestamp_unix_nano, severity_text, severity_number,
@@ -1837,9 +1852,9 @@ func (s *TelemetryService) GetLogs(ctx context.Context, dr DateRange, traceID, s
 			resource_attributes_key, resource_attributes_value
 		FROM log_record
 		WHERE %s
-		ORDER BY timestamp_unix_nano DESC
+		ORDER BY %s %s
 		LIMIT ? OFFSET ?
-	`, strings.Join(conds, " AND "))
+	`, strings.Join(conds, " AND "), orderCol, orderDir)
 
 	rows, err := s.Ch.QueryContext(ctx, query, args...)
 	if err != nil {
