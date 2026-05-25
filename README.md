@@ -79,5 +79,5 @@ docker run -p 4318:4318 -p 3000:3000 -p 8081:8081 -v $(pwd)/data:/data nabatshy
 | `--otel-port` | `OTEL_PORT`             | `4318`        | OpenTelemetry collector port          |
 | `--api-port`  | `API_PORT`              | `3000`        | Query API port                        |
 | `--ui-port`   | `UI_PORT`               | `8081`        | UI server port                        |
-| `--in-memory` | `DUCKDB_IN_MEMORY=true` | off           | Use in-memory DuckDB (no persistence) |
-|               | `DUCKDB_PATH`           | `nabatshy.db` | Path to the DuckDB data file          |
+| `--db-path`   | `DUCKDB_PATH`           | `nabatshy.db` | Path to the DuckDB data file          |
+| `--in-memory` | `DUCKDB_IN_MEMORY=true` | `false`       | Use in-memory DuckDB (no persistence) |

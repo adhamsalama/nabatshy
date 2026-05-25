@@ -29,9 +29,11 @@ func main() {
 	otelPort := flag.String("otel-port", envOr("OTEL_PORT", "4318"), "OTel collector port")
 	apiPort := flag.String("api-port", envOr("API_PORT", "3000"), "API server port")
 	uiPort := flag.String("ui-port", envOr("UI_PORT", "8081"), "UI server port")
+	dbPath := flag.String("db-path", envOr("DUCKDB_PATH", "nabatshy.db"), "DuckDB data file path")
 	inMemory := flag.Bool("in-memory", os.Getenv("DUCKDB_IN_MEMORY") == "true", "Use in-memory DuckDB (no persistence)")
 	flag.Parse()
 
+	os.Setenv("DUCKDB_PATH", *dbPath)
 	sqlDB := db.InitDuckDB(*inMemory)
 	go func() { collector.Run(sqlDB, *otelPort) }()
 	go utils.ServeUI(content, uiDir, *uiPort)
