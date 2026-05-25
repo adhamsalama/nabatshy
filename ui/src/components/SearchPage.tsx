@@ -24,6 +24,8 @@ import {
   FormControlLabel,
   Checkbox,
   Divider,
+  Chip,
+  InputAdornment,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -54,6 +56,75 @@ interface SearchResponse {
   page: number;
   pageSize: number;
 }
+
+const FilterChipInput = ({ value, onChange, onSearch }: { value: string; onChange: (v: string) => void; onSearch: (q: string) => void }) => {
+  const [inputValue, setInputValue] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const chips = value.split(',').map(p => p.trim()).filter(Boolean);
+
+  const commit = (andSearch = false) => {
+    const trimmed = inputValue.trim().replace(/,$/, '');
+    if (!trimmed) { if (andSearch) onSearch(value); return; }
+    const newChips = [...chips, trimmed];
+    const newQuery = newChips.join(',');
+    onChange(newQuery);
+    setInputValue('');
+    if (andSearch) onSearch(newQuery);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') { commit(true); return; }
+    if (e.key === ',') { e.preventDefault(); commit(true); return; }
+    if (e.key === 'Backspace' && inputValue === '' && chips.length > 0) {
+      const newChips = chips.slice(0, -1);
+      const newQuery = newChips.join(',');
+      onChange(newQuery);
+      onSearch(newQuery);
+    }
+  };
+
+  const removeChip = (idx: number) => {
+    const newChips = chips.filter((_, i) => i !== idx);
+    const newQuery = newChips.join(',');
+    onChange(newQuery);
+    onSearch(newQuery);
+  };
+
+  return (
+    <Box
+      onClick={() => inputRef.current?.focus()}
+      sx={{
+        display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 0.5,
+        border: '1px solid', borderColor: 'divider', borderRadius: 1,
+        px: 1, py: 0.75, cursor: 'text', flex: 1,
+        '&:focus-within': { borderColor: 'primary.main', borderWidth: '2px', px: '7px', py: '5px' },
+      }}
+    >
+      {chips.map((chip, i) => (
+        <Chip key={i} label={chip} size="small" onDelete={() => removeChip(i)} sx={{ fontFamily: 'monospace', fontSize: 12 }} />
+      ))}
+      <Box
+        component="input"
+        ref={inputRef}
+        value={inputValue}
+        onChange={e => setInputValue(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder={chips.length === 0 ? 'http.method!=GET, name=GetUser' : ''}
+        sx={{
+          border: 'none', outline: 'none', background: 'transparent',
+          color: 'text.primary', fontFamily: 'monospace', fontSize: 13,
+          flex: 1, minWidth: 160, py: 0.25,
+        }}
+      />
+      <InputAdornment position="end">
+        <IconButton size="small" onClick={() => commit(true)}>
+          <SearchIcon />
+        </IconButton>
+      </InputAdornment>
+    </Box>
+  );
+};
 
 export const SearchPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -316,9 +387,6 @@ export const SearchPage: React.FC = () => {
     }, { replace: true } as never);
   }, [visibleColumns, extraColumns, autoRefresh, intervalPreset, customIntervalInput, setSearchParams]);
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') handleSearch(1);
-  };
 
   const handlePageSizeChange = (e: SelectChangeEvent<number>) => {
     const newSize = e.target.value as number;
@@ -385,7 +453,8 @@ export const SearchPage: React.FC = () => {
 
   return (
     <Box sx={{ p: 3, display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 2 }}>
-      <Box sx={{ gridColumn: 'span 12', display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+      <Box sx={{ gridColumn: 'span 12', display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+      <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
 
         <FormControl size="small" sx={{ minWidth: 150 }}>
           <InputLabel>Time Range</InputLabel>
@@ -480,24 +549,13 @@ export const SearchPage: React.FC = () => {
           </Select>
         </FormControl>
 
-        <TextField
-          fullWidth
-          placeholder="http.method!=GET,name=GetUser"
-          value={query}
-          onChange={e => setQuery(e.target.value)}
-          onKeyPress={handleKeyPress}
-          InputProps={{
-            endAdornment: (
-              <IconButton onClick={() => handleSearch(1)} disabled={loading}>
-                <SearchIcon />
-              </IconButton>
-            ),
-          }}
-        />
-
+      </Box>
+      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+        <FilterChipInput value={query} onChange={setQuery} onSearch={(q) => handleSearch(1, q)} />
         <Button variant="outlined" startIcon={<RefreshIcon />} onClick={() => handleSearch(1)} disabled={loading}>
           Refresh
         </Button>
+      </Box>
       </Box>
 
       {error && (
