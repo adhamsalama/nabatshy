@@ -20,11 +20,16 @@ import {
   Button,
   Switch,
   Drawer,
+  Popover,
+  FormControlLabel,
+  Checkbox,
+  Divider,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import CloseIcon from '@mui/icons-material/Close';
+import ViewColumnIcon from '@mui/icons-material/ViewColumn';
 import { format } from 'date-fns';
 import { useSearchParams } from 'react-router-dom';
 import TraceCountChart from './TraceCountChart';
@@ -41,6 +46,7 @@ interface SearchResult {
   StartTime: number;
   hasError: boolean;
   ResourceAttrs: Record<string, string>;
+  SpanAttrs: Record<string, string>;
 }
 
 interface SearchResponse {
@@ -68,6 +74,24 @@ export const SearchPage: React.FC = () => {
   const [availableServices, setAvailableServices] = useState<string[]>([]);
 
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
+
+  const DEFAULT_COLUMNS = ['traceId', 'spanId', 'name', 'service', 'duration', 'startTime', 'endTime'];
+  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(new Set(DEFAULT_COLUMNS));
+  const [extraColumns, setExtraColumns] = useState<string[]>([]);
+  const [columnAnchorEl, setColumnAnchorEl] = useState<HTMLElement | null>(null);
+
+  const toggleColumn = (id: string) => {
+    setVisibleColumns(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const handleAddAsColumn = (key: string) => {
+    setExtraColumns(prev => prev.includes(key) ? prev : [...prev, key]);
+    setVisibleColumns(prev => new Set([...prev, key]));
+  };
 
   const [timePreset, setTimePreset] = useState<string>('5m');
   const [autoRefresh, setAutoRefresh] = useState(false);
@@ -446,23 +470,78 @@ export const SearchPage: React.FC = () => {
       {!loading && (searchResponse?.results?.length ?? 0) > 0 && (
         <>
           <Box sx={{ gridColumn: 'span 12' }}>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
+              <Button size="small" startIcon={<ViewColumnIcon />} onClick={e => setColumnAnchorEl(e.currentTarget)}>
+                Columns
+              </Button>
+              <Popover
+                open={Boolean(columnAnchorEl)}
+                anchorEl={columnAnchorEl}
+                onClose={() => setColumnAnchorEl(null)}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+              >
+                <Box sx={{ p: 2, minWidth: 200 }}>
+                  <Typography variant="caption" color="text.secondary">Default columns</Typography>
+                  {[
+                    { id: 'traceId', label: 'Trace ID' },
+                    { id: 'spanId', label: 'Span ID' },
+                    { id: 'name', label: 'Name' },
+                    { id: 'service', label: 'Scope' },
+                    { id: 'duration', label: 'Duration' },
+                    { id: 'startTime', label: 'Start Time' },
+                    { id: 'endTime', label: 'End Time' },
+                  ].map(col => (
+                    <FormControlLabel
+                      key={col.id}
+                      control={<Checkbox size="small" checked={visibleColumns.has(col.id)} onChange={() => toggleColumn(col.id)} />}
+                      label={col.label}
+                      sx={{ display: 'flex' }}
+                    />
+                  ))}
+                  {extraColumns.length > 0 && (
+                    <>
+                      <Divider sx={{ my: 1 }} />
+                      <Typography variant="caption" color="text.secondary">Attribute columns</Typography>
+                      {extraColumns.map(key => (
+                        <FormControlLabel
+                          key={key}
+                          control={<Checkbox size="small" checked={visibleColumns.has(key)} onChange={() => toggleColumn(key)} />}
+                          label={key}
+                          sx={{ display: 'flex' }}
+                        />
+                      ))}
+                    </>
+                  )}
+                </Box>
+              </Popover>
+            </Box>
             <TableContainer component={Paper}>
               <Table>
                 <TableHead>
                   <TableRow>
-                    <TableCell>Trace ID</TableCell>
-                    <TableCell>Span ID</TableCell>
-                    <TableCell>Name</TableCell>
-                    <TableCell>Scope</TableCell>
-                    <TableCell onClick={() => handleSortChange('duration')} sx={{ cursor: 'pointer' }}>
-                      Duration {sortField === 'duration' && (sortOrder === 'asc' ? '↑' : '↓')}
-                    </TableCell>
-                    <TableCell onClick={() => handleSortChange('start_time')} sx={{ cursor: 'pointer' }}>
-                      Start Time {sortField === 'start_time' && (sortOrder === 'asc' ? '↑' : '↓')}
-                    </TableCell>
-                    <TableCell onClick={() => handleSortChange('end_time')} sx={{ cursor: 'pointer' }}>
-                      End Time {sortField === 'end_time' && (sortOrder === 'asc' ? '↑' : '↓')}
-                    </TableCell>
+                    {visibleColumns.has('traceId') && <TableCell>Trace ID</TableCell>}
+                    {visibleColumns.has('spanId') && <TableCell>Span ID</TableCell>}
+                    {visibleColumns.has('name') && <TableCell>Name</TableCell>}
+                    {visibleColumns.has('service') && <TableCell>Scope</TableCell>}
+                    {visibleColumns.has('duration') && (
+                      <TableCell onClick={() => handleSortChange('duration')} sx={{ cursor: 'pointer' }}>
+                        Duration {sortField === 'duration' && (sortOrder === 'asc' ? '↑' : '↓')}
+                      </TableCell>
+                    )}
+                    {visibleColumns.has('startTime') && (
+                      <TableCell onClick={() => handleSortChange('start_time')} sx={{ cursor: 'pointer' }}>
+                        Start Time {sortField === 'start_time' && (sortOrder === 'asc' ? '↑' : '↓')}
+                      </TableCell>
+                    )}
+                    {visibleColumns.has('endTime') && (
+                      <TableCell onClick={() => handleSortChange('end_time')} sx={{ cursor: 'pointer' }}>
+                        End Time {sortField === 'end_time' && (sortOrder === 'asc' ? '↑' : '↓')}
+                      </TableCell>
+                    )}
+                    {extraColumns.filter(k => visibleColumns.has(k)).map(key => (
+                      <TableCell key={key}>{key}</TableCell>
+                    ))}
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -476,13 +555,16 @@ export const SearchPage: React.FC = () => {
                         '&:hover': { backgroundColor: r.hasError ? 'rgba(244, 67, 54, 0.2)' : 'rgba(0,0,0,0.04)' }
                       }}
                     >
-                      <TableCell>{r.TraceID}</TableCell>
-                      <TableCell>{r.SpanID}</TableCell>
-                      <TableCell>{r.Name}</TableCell>
-                      <TableCell>{r.Service}</TableCell>
-                      <TableCell>{formatDuration(r.Duration)}</TableCell>
-                      <TableCell>{formatTimestamp(r.StartTime)}</TableCell>
-                      <TableCell>{formatTimestamp(r.StartTime + r.Duration * 1e6)}</TableCell>
+                      {visibleColumns.has('traceId') && <TableCell>{r.TraceID}</TableCell>}
+                      {visibleColumns.has('spanId') && <TableCell>{r.SpanID}</TableCell>}
+                      {visibleColumns.has('name') && <TableCell>{r.Name}</TableCell>}
+                      {visibleColumns.has('service') && <TableCell>{r.Service}</TableCell>}
+                      {visibleColumns.has('duration') && <TableCell>{formatDuration(r.Duration)}</TableCell>}
+                      {visibleColumns.has('startTime') && <TableCell>{formatTimestamp(r.StartTime)}</TableCell>}
+                      {visibleColumns.has('endTime') && <TableCell>{formatTimestamp(r.StartTime + r.Duration * 1e6)}</TableCell>}
+                      {extraColumns.filter(k => visibleColumns.has(k)).map(key => (
+                        <TableCell key={key}>{r.ResourceAttrs?.[key] ?? r.SpanAttrs?.[key] ?? '-'}</TableCell>
+                      ))}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -534,6 +616,7 @@ export const SearchPage: React.FC = () => {
             <TraceDetails
               traceId={selectedTraceId}
               onAddToSearch={(key, value) => setQuery(prev => prev ? `${prev},${key}=${value}` : `${key}=${value}`)}
+              onAddAsColumn={handleAddAsColumn}
             />
           )}
         </Box>

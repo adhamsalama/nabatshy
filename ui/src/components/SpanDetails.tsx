@@ -1,6 +1,7 @@
 import { Container, Typography, Paper, Box, Chip, Alert, AlertTitle, IconButton, Tooltip } from '@mui/material';
 import ErrorIcon from '@mui/icons-material/Error';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
+import ViewColumnIcon from '@mui/icons-material/ViewColumn';
 
 interface SpanEvent {
   timeUnixNano: number;
@@ -28,7 +29,7 @@ export interface SpanDetail {
   events?: SpanEvent[];
 }
 
-const AttrRow = ({ attrKey, value, onAddToSearch }: { attrKey: string; value: string; onAddToSearch?: (key: string, value: string) => void }) => (
+const AttrRow = ({ attrKey, value, onAddToSearch, onAddAsColumn }: { attrKey: string; value: string; onAddToSearch?: (key: string, value: string) => void; onAddAsColumn?: (key: string) => void }) => (
   <Box
     display="flex"
     alignItems="flex-start"
@@ -57,10 +58,22 @@ const AttrRow = ({ attrKey, value, onAddToSearch }: { attrKey: string; value: st
         </IconButton>
       </Tooltip>
     )}
+    {onAddAsColumn && (
+      <Tooltip title={`Add ${attrKey} as table column`} placement="top">
+        <IconButton
+          className="add-to-search"
+          size="small"
+          sx={{ visibility: 'hidden', flexShrink: 0, mt: '-2px' }}
+          onClick={() => onAddAsColumn(attrKey)}
+        >
+          <ViewColumnIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
+    )}
   </Box>
 );
 
-export const SpanDetails = ({ span, onAddToSearch }: { span?: SpanDetail | null; onAddToSearch?: (key: string, value: string) => void }) => {
+export const SpanDetails = ({ span, onAddToSearch, onAddAsColumn }: { span?: SpanDetail | null; onAddToSearch?: (key: string, value: string) => void; onAddAsColumn?: (key: string) => void }) => {
   if (!span) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="20vh">
@@ -119,7 +132,7 @@ export const SpanDetails = ({ span, onAddToSearch }: { span?: SpanDetail | null;
             <Paper variant="outlined" sx={{ p: 2 }}>
               <Box display="flex" flexDirection="column" gap={1}>
                 {Object.entries(span.spanAttributes).map(([key, value]) => (
-                  <AttrRow key={key} attrKey={key} value={value} onAddToSearch={onAddToSearch} />
+                  <AttrRow key={key} attrKey={key} value={value} onAddToSearch={onAddToSearch} onAddAsColumn={onAddAsColumn} />
                 ))}
               </Box>
             </Paper>
@@ -131,7 +144,7 @@ export const SpanDetails = ({ span, onAddToSearch }: { span?: SpanDetail | null;
             <Paper variant="outlined" sx={{ p: 2 }}>
               <Box display="flex" flexDirection="column" gap={1}>
                 {Object.entries(span.resourceAttributes).map(([key, value]) => (
-                  <AttrRow key={key} attrKey={key} value={value} onAddToSearch={onAddToSearch} />
+                  <AttrRow key={key} attrKey={key} value={value} onAddToSearch={onAddToSearch} onAddAsColumn={onAddAsColumn} />
                 ))}
               </Box>
             </Paper>

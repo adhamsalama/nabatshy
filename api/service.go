@@ -120,6 +120,7 @@ type SearchResult struct {
 	EndTime       int64   `db:"end_time_unix_nano"`
 	HasError      bool    `db:"has_error" json:"hasError"`
 	ResourceAttrs map[string]string
+	SpanAttrs     map[string]string
 }
 
 type SearchResponse struct {
@@ -814,6 +815,8 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 			goqu.L("list_contains(events_name, 'exception')").As("has_error"),
 			goqu.C("resource_attributes_key").As("resource_keys"),
 			goqu.C("resource_attributes_value").As("resource_values"),
+			goqu.C("span_attributes_key").As("span_keys"),
+			goqu.C("span_attributes_value").As("span_values"),
 		).
 		Where(conds...)
 
@@ -858,7 +861,7 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 	var results []SearchResult
 	for rows.Next() {
 		var r SearchResult
-		var resourceKeys, resourceValues utils.StringSlice
+		var resourceKeys, resourceValues, spanKeys, spanValues utils.StringSlice
 		if err := rows.Scan(
 			&r.TraceID,
 			&r.SpanID,
@@ -870,14 +873,21 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 			&r.HasError,
 			&resourceKeys,
 			&resourceValues,
+			&spanKeys,
+			&spanValues,
 		); err != nil {
 			return nil, err
 		}
-		attrs := make(map[string]string)
+		resourceAttrs := make(map[string]string, len(resourceKeys))
 		for i := range resourceKeys {
-			attrs[resourceKeys[i]] = resourceValues[i]
+			resourceAttrs[resourceKeys[i]] = resourceValues[i]
 		}
-		r.ResourceAttrs = attrs
+		r.ResourceAttrs = resourceAttrs
+		spanAttrs := make(map[string]string, len(spanKeys))
+		for i := range spanKeys {
+			spanAttrs[spanKeys[i]] = spanValues[i]
+		}
+		r.SpanAttrs = spanAttrs
 		results = append(results, r)
 	}
 
