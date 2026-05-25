@@ -61,6 +61,13 @@ function App() {
           }),
         },
       },
+      MuiPopover: {
+        styleOverrides: {
+          paper: ({ theme }) => ({
+            boxShadow: theme.shadows[8],
+          }),
+        },
+      },
       MuiTableHead: {
         styleOverrides: {
           root: ({ theme }) => ({

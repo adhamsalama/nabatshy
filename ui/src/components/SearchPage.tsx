@@ -160,8 +160,7 @@ export const SearchPage: React.FC = () => {
     const v = p.get('extraColumns');
     return v ? v.split(',').filter(Boolean) : [];
   });
-  const [columnAnchorEl, setColumnAnchorEl] = useState<HTMLElement | null>(null);
-  const columnsButtonRef = useRef<HTMLButtonElement>(null);
+  const [columnAnchorPos, setColumnAnchorPos] = useState<{ top: number; left: number } | null>(null);
 
   const toggleColumn = (id: string) => {
     setVisibleColumns(prev => {
@@ -596,15 +595,18 @@ export const SearchPage: React.FC = () => {
         <>
           <Box sx={{ gridColumn: 'span 12' }}>
             <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-              <Button ref={columnsButtonRef} size="small" startIcon={<ViewColumnIcon />} onClick={() => setColumnAnchorEl(columnsButtonRef.current)}>
+              <Button size="small" startIcon={<ViewColumnIcon />} onClick={e => {
+                const r = e.currentTarget.getBoundingClientRect();
+                setColumnAnchorPos({ top: r.bottom, left: r.right });
+              }}>
                 Columns
               </Button>
               <Popover
-                open={Boolean(columnAnchorEl)}
-                anchorEl={columnAnchorEl}
-                onClose={() => setColumnAnchorEl(null)}
-                anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                open={Boolean(columnAnchorPos)}
+                anchorReference="anchorPosition"
+                anchorPosition={columnAnchorPos ?? undefined}
                 transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+                onClose={() => setColumnAnchorPos(null)}
               >
                 <Box sx={{ p: 2, minWidth: 200 }}>
                   <Typography variant="caption" color="text.secondary">Default columns</Typography>
