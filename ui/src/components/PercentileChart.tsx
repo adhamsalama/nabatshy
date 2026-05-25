@@ -36,7 +36,7 @@ const PercentileChart: React.FC<PercentileChartProps> = ({ data, percentile }) =
                 dataKey="timestamp"
                 tickFormatter={v => new Date(v).toLocaleString()}
               />
-              <YAxis domain={[0, 'auto']} />
+              <YAxis domain={[0, 'auto']} unit="ms" width={60} />
               <ReTooltip
                 labelFormatter={v => new Date(v).toLocaleString()}
                 formatter={val => [`${(val as number).toFixed(2)} ms`, `P${percentile}`]}

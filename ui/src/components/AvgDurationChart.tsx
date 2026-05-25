@@ -29,7 +29,7 @@ const AvgDurationChart: React.FC<AvgDurationChartProps> = ({ data }) => (
           <LineChart data={data}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="timestamp" tickFormatter={(v) => new Date(v).toLocaleString()} />
-            <YAxis domain={[0, 'auto']} />
+            <YAxis domain={[0, 'auto']} unit="ms" width={60} />
             <Tooltip
               labelFormatter={(v) => new Date(v).toLocaleString()}
               formatter={(value: number) => value.toFixed(2)}

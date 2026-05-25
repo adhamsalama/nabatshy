@@ -174,16 +174,25 @@ type SlowTrace struct {
 	StartTime int64   `db:"start_time" json:"start_time"`
 }
 
-func (s *TelemetryService) GetTopSlowTraces(ctx context.Context, n uint) ([]Trace, error) {
+func (s *TelemetryService) GetTopSlowTraces(ctx context.Context, n uint, service string) ([]SlowTrace, error) {
+	conds := []goqu.Expression{goqu.C("parent_span_id").Eq("")}
+	if service != "" {
+		conds = append(conds, goqu.And(
+			goqu.L("list_contains(resource_attributes_key, 'service.name')"),
+			goqu.L("resource_attributes_value[list_position(resource_attributes_key, 'service.name')] = ?", service),
+		))
+	}
 	ds := s.DB.
 		From("denormalized_span").
 		Select(
 			goqu.C("trace_id"),
 			goqu.C("name"),
 			goqu.L("duration_ns / 1000000").As("duration_ms"),
+			goqu.C("scope_name").As("service"),
+			goqu.C("start_time_unix_nano"),
 		).
-		Where(goqu.C("parent_span_id").Eq("")).
-		Order(goqu.C("start_time_unix_nano").Desc(), goqu.C("duration_ms").Desc()).
+		Where(conds...).
+		Order(goqu.C("duration_ms").Desc()).
 		Limit(n)
 	sqlStr, args, err := ds.ToSQL()
 	if err != nil {
@@ -196,10 +205,10 @@ func (s *TelemetryService) GetTopSlowTraces(ctx context.Context, n uint) ([]Trac
 	}
 	defer rows.Close()
 
-	var results []Trace
+	var results []SlowTrace
 	for rows.Next() {
-		var t Trace
-		if err := rows.Scan(&t.TraceID, &t.Name, &t.Duration); err != nil {
+		var t SlowTrace
+		if err := rows.Scan(&t.TraceID, &t.Name, &t.Duration, &t.Service, &t.StartTime); err != nil {
 			return nil, err
 		}
 		results = append(results, t)
@@ -1227,20 +1236,26 @@ func (s *TelemetryService) GetAvgDuration(
 func (s *TelemetryService) GetErrorCounts(
 	ctx context.Context,
 	dateRange DateRange,
+	service string,
 ) ([]TimeCount, error) {
 	startNano := dateRange.Start.UnixNano()
 	endNano := dateRange.End.UnixNano()
 	intervalSQL := GetIntervalFromDateRange(dateRange)
+
+	serviceFilter := ""
+	if service != "" {
+		serviceFilter = fmt.Sprintf(` AND list_contains(resource_attributes_key, 'service.name') AND resource_attributes_value[list_position(resource_attributes_key, 'service.name')] = '%s'`, service)
+	}
 
 	query := fmt.Sprintf(`
 		SELECT
 			time_bucket(INTERVAL '%s', to_timestamp(start_time_unix_nano / 1e9), TIMESTAMPTZ 'epoch') AS ts,
 			count(*) FILTER (WHERE list_contains(events_name, 'exception')) AS cnt
 		FROM denormalized_span
-		WHERE start_time_unix_nano >= %d AND start_time_unix_nano <= %d
+		WHERE start_time_unix_nano >= %d AND start_time_unix_nano <= %d%s
 		GROUP BY ts
 		ORDER BY ts ASC
-	`, intervalSQL, startNano, endNano)
+	`, intervalSQL, startNano, endNano, serviceFilter)
 
 	rows, err := s.Ch.QueryContext(ctx, query)
 	if err != nil {

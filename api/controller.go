@@ -38,9 +38,9 @@ func (c *TelemetryController) getTopNSlowestTraces(w http.ResponseWriter, r *htt
 		return
 	}
 	n := uint(n64)
+	service := r.URL.Query().Get("service")
 
-	// Fetch data
-	traces, err := c.service.GetTopSlowTraces(r.Context(), n)
+	traces, err := c.service.GetTopSlowTraces(r.Context(), n, service)
 	if err != nil {
 		http.Error(w, "failed to fetch traces: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -317,7 +317,8 @@ func (c *TelemetryController) getErrorCounts(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	counts, err := c.service.GetErrorCounts(r.Context(), dr)
+	service := q.Get("service")
+	counts, err := c.service.GetErrorCounts(r.Context(), dr, service)
 	if err != nil {
 		http.Error(w, "failed to get error counts", http.StatusInternalServerError)
 		return
@@ -377,6 +378,52 @@ func (c *TelemetryController) getUniqueServiceNames(w http.ResponseWriter, r *ht
 	json.NewEncoder(w).Encode(services)
 }
 
+func (c *TelemetryController) debugQuery(w http.ResponseWriter, r *http.Request) {
+	sql := r.URL.Query().Get("sql")
+	if sql == "" {
+		http.Error(w, "missing 'sql' query param", http.StatusBadRequest)
+		return
+	}
+
+	rows, err := c.service.Ch.QueryContext(r.Context(), sql)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("query error: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	cols, err := rows.Columns()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("columns error: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	var results []map[string]any
+	for rows.Next() {
+		vals := make([]any, len(cols))
+		ptrs := make([]any, len(cols))
+		for i := range vals {
+			ptrs[i] = &vals[i]
+		}
+		if err := rows.Scan(ptrs...); err != nil {
+			http.Error(w, fmt.Sprintf("scan error: %v", err), http.StatusInternalServerError)
+			return
+		}
+		row := make(map[string]any, len(cols))
+		for i, col := range cols {
+			row[col] = vals[i]
+		}
+		results = append(results, row)
+	}
+	if err := rows.Err(); err != nil {
+		http.Error(w, fmt.Sprintf("rows error: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(results)
+}
+
 func (c *TelemetryController) RegisterRoutes(r chi.Router) {
 	r.Get("/v1/traces/slowest", c.getTopNSlowestTraces)
 	r.Get("/v1/traces/service/{service}", c.getServiceTraces)
@@ -395,4 +442,5 @@ func (c *TelemetryController) RegisterRoutes(r chi.Router) {
 	r.Get("/api/metrics/errors", c.getErrorCounts)
 	r.Get("/api/metrics/search", c.getSearchMetrics)
 	r.Get("/api/services", c.getUniqueServiceNames)
+	r.Get("/debug/query", c.debugQuery)
 }

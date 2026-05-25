@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Box,
-  TextField,
   Typography,
   CircularProgress,
   Select,
@@ -9,193 +8,223 @@ import {
   FormControl,
   InputLabel,
   Button,
+  Card,
+  CardContent,
+  Switch,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  Chip,
+  Drawer,
+  IconButton,
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
-import { format } from 'date-fns';
+import CloseIcon from '@mui/icons-material/Close';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import PercentileChart, { TimePercentile } from './PercentileChart';
 import TraceCountChart from './TraceCountChart';
+import { TraceDetails } from './TraceDetails';
 import AvgDurationChart from './AvgDurationChart';
 import ErrorCountChart from './ErrorCountChart';
-import { config } from "../config.ts";
+import { config } from '../config.ts';
 
 const percentileOptions = [50, 75, 90, 95, 99, 100] as const;
+
+const TIME_PRESETS = [
+  { label: 'Last 5m',  minutes: 5 },
+  { label: 'Last 15m', minutes: 15 },
+  { label: 'Last 30m', minutes: 30 },
+  { label: 'Last 1h',  minutes: 60 },
+  { label: 'Last 3h',  minutes: 180 },
+  { label: 'Last 24h', minutes: 1440 },
+];
+
+const REFRESH_INTERVALS = [
+  { label: '10s', seconds: 10 },
+  { label: '30s', seconds: 30 },
+  { label: '1m',  seconds: 60 },
+  { label: '5m',  seconds: 300 },
+];
+
+interface SlowTrace {
+  trace_id: string;
+  name: string;
+  duration_ms: number;
+  service: string;
+  start_time: number; // nanoseconds
+}
+
+interface StatCardProps {
+  label: string;
+  value: string;
+  sub?: string;
+  color?: string;
+}
+
+const StatCard: React.FC<StatCardProps> = ({ label, value, sub, color }) => (
+  <Card sx={{ flex: 1, minWidth: 140 }}>
+    <CardContent sx={{ pb: '12px !important' }}>
+      <Typography variant="caption" color="text.secondary" display="block">{label}</Typography>
+      <Typography variant="h4" sx={{ fontWeight: 700, color: color ?? 'text.primary', lineHeight: 1.2, mt: 0.5 }}>
+        {value}
+      </Typography>
+      {sub && <Typography variant="caption" color="text.secondary">{sub}</Typography>}
+    </CardContent>
+  </Card>
+);
 
 export const MonitoringPage: React.FC = () => {
   const [percentileSeries, setPercentileSeries] = useState<TimePercentile[]>([]);
   const [traceCountSeries, setTraceCountSeries] = useState<TimePercentile[]>([]);
   const [avgDurationSeries, setAvgDurationSeries] = useState<TimePercentile[]>([]);
   const [errorCountSeries, setErrorCountSeries] = useState<TimePercentile[]>([]);
+  const [slowTraces, setSlowTraces] = useState<SlowTrace[]>([]);
+  const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [percentile, setPercentile] = useState<number>(95);
-  const [startDate, setStartDate] = useState(() => new Date(Date.now() - 60 * 60 * 1000)); // Last 1 hour
-  const [endDate, setEndDate] = useState(() => new Date());
+  const [timePresetIdx, setTimePresetIdx] = useState(3); // Last 1h
   const [selectedService, setSelectedService] = useState<string>('');
   const [availableServices, setAvailableServices] = useState<string[]>([]);
   const [traceOrSpan, setTraceOrSpan] = useState<'trace' | 'span'>('trace');
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [refreshInterval, setRefreshInterval] = useState(30);
 
-  // Fetch available services on mount
-  useEffect(() => {
-    const fetchServices = async () => {
-      try {
-        const response = await fetch(`${config.backendUrl}/api/services`);
-        if (response.ok) {
-          const services = await response.json();
-          setAvailableServices(services || []);
-        }
-      } catch (err) {
-        console.error('Failed to fetch services:', err);
-      }
-    };
-    fetchServices();
-  }, []);
+  const getDateRange = useCallback(() => {
+    const end = new Date();
+    const start = new Date(end.getTime() - TIME_PRESETS[timePresetIdx].minutes * 60 * 1000);
+    return { start, end };
+  }, [timePresetIdx]);
 
-  const fetchMetrics = async () => {
-    if (!startDate || !endDate || isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-      setError('Invalid start or end date');
-      return;
-    }
+  const fetchMetrics = useCallback(async () => {
+    const { start, end } = getDateRange();
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) { setError('Invalid date range'); return; }
 
     setLoading(true);
     setError(null);
-
     try {
-      const params = {
-        start: startDate.toISOString(),
-        end: endDate.toISOString(),
-      };
-
-      // Use /api/metrics/search endpoint for all cases (with or without service filter)
       const metricsUrl = new URL(`${config.backendUrl}/api/metrics/search`);
-      if (selectedService) {
-        metricsUrl.searchParams.set('query', `service.name=${selectedService}`);
-      }
-      metricsUrl.searchParams.set('start', params.start);
-      metricsUrl.searchParams.set('end', params.end);
+      if (selectedService) metricsUrl.searchParams.set('query', `service.name=${selectedService}`);
+      metricsUrl.searchParams.set('start', start.toISOString());
+      metricsUrl.searchParams.set('end', end.toISOString());
       metricsUrl.searchParams.set('percentile', String(percentile));
       metricsUrl.searchParams.set('traceOrSpan', traceOrSpan);
 
-      const metricsResponse = await fetch(metricsUrl.toString());
-      if (metricsResponse.ok) {
-        const metricsData = await metricsResponse.json();
-        setPercentileSeries(metricsData.PercentileResults || []);
-        setTraceCountSeries(metricsData.TraceCountResults || []);
-        setAvgDurationSeries(metricsData.AvgDurationResults || []);
-      }
+      const errorUrl = new URL(`${config.backendUrl}/api/metrics/errors`);
+      errorUrl.searchParams.set('start', start.toISOString());
+      errorUrl.searchParams.set('end', end.toISOString());
+      if (selectedService) errorUrl.searchParams.set('service', selectedService);
 
-      // Error count still needs separate fetch
-      const errorCountUrl = new URL(`${config.backendUrl}/api/metrics/errors`);
-      errorCountUrl.searchParams.set('start', params.start);
-      errorCountUrl.searchParams.set('end', params.end);
+      const slowUrl = new URL(`${config.backendUrl}/v1/traces/slowest`);
+      slowUrl.searchParams.set('n', '20');
+      if (selectedService) slowUrl.searchParams.set('service', selectedService);
 
-      const errorCountResponse = await fetch(errorCountUrl.toString());
-      if (errorCountResponse.ok) {
-        const errorCountData = await errorCountResponse.json();
-        setErrorCountSeries(errorCountData || []);
+      const [metricsRes, errorRes, slowRes] = await Promise.all([
+        fetch(metricsUrl.toString()),
+        fetch(errorUrl.toString()),
+        fetch(slowUrl.toString()),
+      ]);
+
+      if (metricsRes.ok) {
+        const d = await metricsRes.json();
+        setPercentileSeries(d.PercentileResults || []);
+        setTraceCountSeries(d.TraceCountResults || []);
+        setAvgDurationSeries(d.AvgDurationResults || []);
       }
+      if (errorRes.ok) setErrorCountSeries(await errorRes.json() || []);
+      if (slowRes.ok) setSlowTraces(await slowRes.json() || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
-      setPercentileSeries([]);
-      setTraceCountSeries([]);
-      setAvgDurationSeries([]);
-      setErrorCountSeries([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [getDateRange, selectedService, percentile, traceOrSpan]);
+
+  useEffect(() => { fetchMetrics(); }, [fetchMetrics]);
+
+  const fetchRef = useRef(fetchMetrics);
+  useEffect(() => { fetchRef.current = fetchMetrics; });
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const id = setInterval(() => fetchRef.current(), refreshInterval * 1000);
+    return () => clearInterval(id);
+  }, [autoRefresh, refreshInterval]);
 
   useEffect(() => {
-    fetchMetrics();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    fetch(`${config.backendUrl}/api/services`)
+      .then(r => r.ok ? r.json() : [])
+      .then(s => setAvailableServices(s || []))
+      .catch(() => {});
   }, []);
 
-  useEffect(() => {
-    fetchMetrics();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [percentile]);
+  // Derived summary stats
+  const latestP = [...percentileSeries].reverse().find(p => p.value > 0)?.value ?? null;
+  const totalCount = traceCountSeries.reduce((s, p) => s + p.value, 0);
+  const totalErrors = errorCountSeries.reduce((s, p) => s + p.value, 0);
+  const errorRate = totalCount > 0 ? ((totalErrors / totalCount) * 100).toFixed(1) : '0.0';
 
-  useEffect(() => {
-    fetchMetrics();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedService]);
-
-  useEffect(() => {
-    fetchMetrics();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [traceOrSpan]);
+  const fmtMs = (ms: number) => ms < 1000 ? `${ms.toFixed(0)}ms` : `${(ms / 1000).toFixed(2)}s`;
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom>
-        System Monitoring
-      </Typography>
+      <Typography variant="h5" gutterBottom fontWeight={600}>Monitoring</Typography>
 
+      {/* Toolbar */}
       <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center', mb: 3 }}>
-        <TextField
-          label="Start Time"
-          type="datetime-local"
-          value={format(startDate, "yyyy-MM-dd'T'HH:mm")}
-          onChange={e => setStartDate(new Date(e.target.value))}
-          InputLabelProps={{ shrink: true }}
-        />
-        <TextField
-          label="End Time"
-          type="datetime-local"
-          value={format(endDate, "yyyy-MM-dd'T'HH:mm")}
-          onChange={e => setEndDate(new Date(e.target.value))}
-          InputLabelProps={{ shrink: true }}
-        />
+        <FormControl size="small" sx={{ minWidth: 140 }}>
+          <InputLabel>Time Range</InputLabel>
+          <Select value={timePresetIdx} label="Time Range" onChange={e => setTimePresetIdx(Number(e.target.value))}>
+            {TIME_PRESETS.map((p, i) => <MenuItem key={i} value={i}>{p.label}</MenuItem>)}
+          </Select>
+        </FormControl>
+
         <FormControl size="small" sx={{ minWidth: 120 }}>
           <InputLabel>Percentile</InputLabel>
-          <Select
-            value={percentile}
-            label="Percentile"
-            onChange={e => setPercentile(Number(e.target.value))}
-          >
-            {percentileOptions.map(p => (
-              <MenuItem key={`p${p}`} value={p}>{`P${p}`}</MenuItem>
-            ))}
+          <Select value={percentile} label="Percentile" onChange={e => setPercentile(Number(e.target.value))}>
+            {percentileOptions.map(p => <MenuItem key={p} value={p}>P{p}</MenuItem>)}
           </Select>
         </FormControl>
-        <FormControl size="small" sx={{ minWidth: 200 }}>
-          <InputLabel>Service</InputLabel>
-          <Select
-            value={selectedService}
-            label="Service"
-            onChange={e => setSelectedService(e.target.value)}
-          >
+
+        <FormControl size="small" sx={{ minWidth: 180 }}>
+          <InputLabel shrink>Service</InputLabel>
+          <Select value={selectedService} label="Service" onChange={e => setSelectedService(e.target.value)} displayEmpty renderValue={(v: string) => v || 'All Services'} notched>
             <MenuItem value="">All Services</MenuItem>
-            {availableServices.map(service => (
-              <MenuItem key={service} value={service}>{service}</MenuItem>
-            ))}
+            {availableServices.map(s => <MenuItem key={s} value={s}>{s}</MenuItem>)}
           </Select>
         </FormControl>
-        <FormControl size="small" sx={{ minWidth: 150 }}>
+
+        <FormControl size="small" sx={{ minWidth: 130 }}>
           <InputLabel>Type</InputLabel>
-          <Select
-            value={traceOrSpan}
-            label="Type"
-            onChange={e => setTraceOrSpan(e.target.value as 'trace' | 'span')}
-          >
+          <Select value={traceOrSpan} label="Type" onChange={e => setTraceOrSpan(e.target.value as 'trace' | 'span')}>
             <MenuItem value="trace">Trace</MenuItem>
             <MenuItem value="span">Span</MenuItem>
           </Select>
         </FormControl>
-        <Button
-          variant="outlined"
-          startIcon={<RefreshIcon />}
-          onClick={fetchMetrics}
-          disabled={loading}
-        >
+
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography variant="body2">Auto-refresh</Typography>
+          <Switch checked={autoRefresh} onChange={e => setAutoRefresh(e.target.checked)} size="small" />
+        </Box>
+
+        {autoRefresh && (
+          <FormControl size="small" sx={{ minWidth: 100 }}>
+            <InputLabel>Interval</InputLabel>
+            <Select value={refreshInterval} label="Interval" onChange={e => setRefreshInterval(Number(e.target.value))}>
+              {REFRESH_INTERVALS.map(r => <MenuItem key={r.seconds} value={r.seconds}>{r.label}</MenuItem>)}
+            </Select>
+          </FormControl>
+        )}
+
+        <Button variant="outlined" startIcon={<RefreshIcon />} onClick={fetchMetrics} disabled={loading}>
           Refresh
         </Button>
       </Box>
 
-      {error && (
-        <Box sx={{ mb: 2 }}>
-          <Typography color="error">{error}</Typography>
-        </Box>
-      )}
+      {error && <Typography color="error" sx={{ mb: 2 }}>{error}</Typography>}
 
       {loading && (
         <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
@@ -204,27 +233,104 @@ export const MonitoringPage: React.FC = () => {
       )}
 
       {!loading && (
-        <Box
-          sx={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(2, 1fr)',
-            gap: 2,
-          }}
-        >
-          <Box>
+        <>
+          {/* Stat cards */}
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mb: 3 }}>
+            <StatCard
+              label={`P${percentile} Latency`}
+              value={latestP !== null ? fmtMs(latestP) : '—'}
+              sub="latest bucket"
+            />
+            <StatCard
+              label="Total Spans / Traces"
+              value={totalCount.toLocaleString()}
+              sub={TIME_PRESETS[timePresetIdx].label}
+            />
+            <StatCard
+              label="Total Errors"
+              value={totalErrors.toLocaleString()}
+              sub="exceptions"
+              color={totalErrors > 0 ? '#ef4444' : undefined}
+            />
+            <StatCard
+              label="Error Rate"
+              value={`${errorRate}%`}
+              color={parseFloat(errorRate) > 5 ? '#ef4444' : parseFloat(errorRate) > 1 ? '#f59e0b' : undefined}
+            />
+          </Box>
+
+          {/* Charts */}
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 2, mb: 3 }}>
             <PercentileChart data={percentileSeries} percentile={percentile} />
-          </Box>
-          <Box>
             <TraceCountChart data={traceCountSeries} />
-          </Box>
-          <Box>
             <AvgDurationChart data={avgDurationSeries} />
-          </Box>
-          <Box>
             <ErrorCountChart data={errorCountSeries} />
           </Box>
-        </Box>
+
+          {/* Slowest traces */}
+          <Typography variant="h6" gutterBottom fontWeight={600}>Top 20 Slowest Traces</Typography>
+          <TableContainer component={Paper}>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Name</TableCell>
+                  <TableCell>Service</TableCell>
+                  <TableCell>Duration</TableCell>
+                  <TableCell>Start Time</TableCell>
+                  <TableCell>Trace ID</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {slowTraces.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} align="center">No data</TableCell>
+                  </TableRow>
+                ) : slowTraces.map(t => (
+                  <TableRow key={t.trace_id} onClick={() => setSelectedTraceId(t.trace_id)} sx={{ cursor: 'pointer', '&:hover': { background: 'rgba(0,0,0,0.04)' } }}>
+                    <TableCell>{t.name}</TableCell>
+                    <TableCell>
+                      <Chip label={t.service} size="small" sx={{ fontFamily: 'monospace', fontSize: 11 }} />
+                    </TableCell>
+                    <TableCell sx={{ fontFamily: 'monospace', color: t.duration_ms > 1000 ? '#ef4444' : t.duration_ms > 500 ? '#f59e0b' : 'inherit' }}>
+                      {fmtMs(t.duration_ms)}
+                    </TableCell>
+                    <TableCell sx={{ fontFamily: 'monospace', fontSize: 12 }}>
+                      {new Date(t.start_time / 1e6).toLocaleString()}
+                    </TableCell>
+                    <TableCell sx={{ fontFamily: 'monospace', fontSize: 11, color: 'text.secondary' }}>
+                      {t.trace_id}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </>
       )}
+
+      <Drawer
+        anchor="right"
+        open={selectedTraceId !== null}
+        onClose={() => setSelectedTraceId(null)}
+        PaperProps={{ sx: { width: '80vw', display: 'flex', flexDirection: 'column' } }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 2, py: 1, borderBottom: 1, borderColor: 'divider', flexShrink: 0 }}>
+          <Typography variant="subtitle1" sx={{ fontFamily: 'monospace', fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {selectedTraceId}
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1, flexShrink: 0 }}>
+            <Button size="small" startIcon={<OpenInNewIcon />} onClick={() => window.open(`/traces/${encodeURIComponent(selectedTraceId ?? '')}`, '_blank')}>
+              Open in new tab
+            </Button>
+            <IconButton size="small" onClick={() => setSelectedTraceId(null)}>
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </Box>
+        <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
+          {selectedTraceId && <TraceDetails traceId={selectedTraceId} />}
+        </Box>
+      </Drawer>
     </Box>
   );
 };
