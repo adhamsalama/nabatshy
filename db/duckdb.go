@@ -38,6 +38,29 @@ CREATE TABLE IF NOT EXISTS cron_jobs (
     query       VARCHAR NOT NULL,
     interval_seconds INTEGER NOT NULL,
     created_at  BIGINT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS metric_data_point (
+    metric_name                   VARCHAR,
+    metric_description            VARCHAR,
+    metric_unit                   VARCHAR,
+    metric_type                   VARCHAR,
+    time_unix_nano                BIGINT,
+    start_time_unix_nano          BIGINT,
+    value_double                  DOUBLE,
+    value_int                     BIGINT,
+    aggregation_temporality       VARCHAR,
+    is_monotonic                  BOOLEAN,
+    histogram_count               BIGINT,
+    histogram_sum                 DOUBLE,
+    histogram_min                 DOUBLE,
+    histogram_max                 DOUBLE,
+    histogram_bucket_counts       BIGINT[],
+    histogram_explicit_bounds     DOUBLE[],
+    attributes_key                VARCHAR[],
+    attributes_value              VARCHAR[],
+    resource_attributes_key       VARCHAR[],
+    resource_attributes_value     VARCHAR[],
+    scope_name                    VARCHAR
 );`
 
 func InitDuckDB() *sql.DB {

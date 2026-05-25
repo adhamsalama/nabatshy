@@ -11,6 +11,7 @@ import (
 	"nabatshy/utils"
 
 	"github.com/go-chi/chi/v5"
+	colmetrics "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
 	coltrace "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -19,7 +20,47 @@ import (
 type Span = utils.Span
 
 type TelemetryCollectorController struct {
-	service TelemetryCollectorService
+	service        TelemetryCollectorService
+	metricsService MetricsService
+}
+
+func (c *TelemetryCollectorController) ingestMetricsHTTPRequest(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "failed to read body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var req colmetrics.ExportMetricsServiceRequest
+	contentType := r.Header.Get("Content-Type")
+
+	switch contentType {
+	case "application/x-protobuf":
+		if protoErr := proto.Unmarshal(body, &req); protoErr != nil {
+			http.Error(w, "invalid protobuf: "+protoErr.Error(), http.StatusBadRequest)
+			return
+		}
+	case "application/json":
+		if protoErr := protojson.Unmarshal(body, &req); protoErr != nil {
+			http.Error(w, "invalid json: "+protoErr.Error(), http.StatusBadRequest)
+			return
+		}
+	default:
+		http.Error(w, "unsupported content type", http.StatusUnsupportedMediaType)
+		return
+	}
+
+	c.metricsService.ingestMetrics(&req)
+
+	resp := &colmetrics.ExportMetricsServiceResponse{}
+	out, err := proto.Marshal(resp)
+	if err != nil {
+		http.Error(w, "failed to marshal response", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/x-protobuf")
+	w.WriteHeader(http.StatusOK)
+	w.Write(out)
 }
 
 func (c *TelemetryCollectorController) ingestTraceHTTPRequest(w http.ResponseWriter, r *http.Request) {
@@ -199,14 +240,19 @@ func (c *TelemetryCollectorController) formatOldOTELData(
 
 func (c *TelemetryCollectorController) RegisterRoutes(r chi.Router) {
 	r.Post("/v1/traces", c.ingestTraceHTTPRequest)
+	r.Post("/v1/metrics", c.ingestMetricsHTTPRequest)
 }
 
 func Run(db *sql.DB) {
 	telService := TelemetryCollectorService{
 		writer: NewSpanWriter(db),
 	}
+	metricsService := MetricsService{
+		writer: NewMetricWriter(db),
+	}
 	telController := TelemetryCollectorController{
-		service: telService,
+		service:        telService,
+		metricsService: metricsService,
 	}
 
 	r := chi.NewRouter()

@@ -1519,3 +1519,83 @@ func (s *TelemetryService) GetUniqueServiceNames(ctx context.Context) ([]string,
 
 	return services, nil
 }
+
+type OtelMetricRow struct {
+	MetricName             string            `json:"metric_name"`
+	MetricType             string            `json:"metric_type"`
+	MetricUnit             string            `json:"metric_unit"`
+	TimeUnixNano           int64             `json:"time_unix_nano"`
+	ValueDouble            float64           `json:"value_double"`
+	ValueInt               int64             `json:"value_int"`
+	AggregationTemporality string            `json:"aggregation_temporality"`
+	IsMonotonic            bool              `json:"is_monotonic"`
+	HistogramCount         int64             `json:"histogram_count"`
+	HistogramSum           float64           `json:"histogram_sum"`
+	ScopeName              string            `json:"scope_name"`
+	Attributes             map[string]string `json:"attributes"`
+	ResourceAttributes     map[string]string `json:"resource_attributes"`
+}
+
+func (s *TelemetryService) GetOtelMetrics(ctx context.Context, limit int, metricName string) ([]OtelMetricRow, error) {
+	where := ""
+	args := []any{}
+	if metricName != "" {
+		where = "WHERE metric_name = ?"
+		args = append(args, metricName)
+	}
+
+	query := fmt.Sprintf(`
+		SELECT
+			metric_name, metric_type, metric_unit,
+			time_unix_nano, value_double, value_int,
+			aggregation_temporality, is_monotonic,
+			histogram_count, histogram_sum,
+			scope_name,
+			attributes_key, attributes_value,
+			resource_attributes_key, resource_attributes_value
+		FROM metric_data_point
+		%s
+		ORDER BY time_unix_nano DESC
+		LIMIT %d
+	`, where, limit)
+
+	rows, err := s.Ch.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query error: %w", err)
+	}
+	defer rows.Close()
+
+	var results []OtelMetricRow
+	for rows.Next() {
+		var r OtelMetricRow
+		var attrKeys, attrValues, resKeys, resValues utils.StringSlice
+		if err := rows.Scan(
+			&r.MetricName, &r.MetricType, &r.MetricUnit,
+			&r.TimeUnixNano, &r.ValueDouble, &r.ValueInt,
+			&r.AggregationTemporality, &r.IsMonotonic,
+			&r.HistogramCount, &r.HistogramSum,
+			&r.ScopeName,
+			&attrKeys, &attrValues,
+			&resKeys, &resValues,
+		); err != nil {
+			return nil, fmt.Errorf("scan error: %w", err)
+		}
+		r.Attributes = make(map[string]string, len(attrKeys))
+		for i := range attrKeys {
+			if i < len(attrValues) {
+				r.Attributes[attrKeys[i]] = attrValues[i]
+			}
+		}
+		r.ResourceAttributes = make(map[string]string, len(resKeys))
+		for i := range resKeys {
+			if i < len(resValues) {
+				r.ResourceAttributes[resKeys[i]] = resValues[i]
+			}
+		}
+		results = append(results, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
+	}
+	return results, nil
+}

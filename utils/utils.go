@@ -133,6 +133,73 @@ func GetDateRangeFromQuery(timeRange string) DateRange {
 	return dateRange
 }
 
+func InsertMetricDataPoints(db *sql.DB, ctx context.Context, points []MetricDataPoint) error {
+	if len(points) == 0 {
+		return nil
+	}
+
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("getting conn: %w", err)
+	}
+	defer conn.Close()
+
+	return conn.Raw(func(c any) error {
+		driverConn, ok := c.(driver.Conn)
+		if !ok {
+			return fmt.Errorf("unexpected connection type %T", c)
+		}
+
+		appender, err := duckdb.NewAppenderFromConn(driverConn, "", "metric_data_point")
+		if err != nil {
+			return fmt.Errorf("creating appender: %w", err)
+		}
+
+		for _, p := range points {
+			bucketCounts := p.HistogramBucketCounts
+			if bucketCounts == nil {
+				bucketCounts = []int64{}
+			}
+			explicitBounds := p.HistogramExplicitBounds
+			if explicitBounds == nil {
+				explicitBounds = []float64{}
+			}
+			attrKeys := p.AttributesKey
+			if attrKeys == nil {
+				attrKeys = []string{}
+			}
+			attrValues := p.AttributesValue
+			if attrValues == nil {
+				attrValues = []string{}
+			}
+			resKeys := p.ResourceAttributesKey
+			if resKeys == nil {
+				resKeys = []string{}
+			}
+			resValues := p.ResourceAttributesValue
+			if resValues == nil {
+				resValues = []string{}
+			}
+
+			if err := appender.AppendRow(
+				p.MetricName, p.MetricDescription, p.MetricUnit, p.MetricType,
+				p.TimeUnixNano, p.StartTimeUnixNano,
+				p.ValueDouble, p.ValueInt,
+				p.AggregationTemporality, p.IsMonotonic,
+				p.HistogramCount, p.HistogramSum, p.HistogramMin, p.HistogramMax,
+				bucketCounts, explicitBounds,
+				attrKeys, attrValues,
+				resKeys, resValues,
+				p.ScopeName,
+			); err != nil {
+				appender.Close()
+				return fmt.Errorf("appending row: %w", err)
+			}
+		}
+		return appender.Close()
+	})
+}
+
 func InsertDenormalizedSpans(db *sql.DB, ctx context.Context, spans []Span) error {
 	if len(spans) == 0 {
 		return nil

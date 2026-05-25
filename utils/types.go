@@ -127,6 +127,30 @@ type Event struct {
 	Attributes   []EventAttribute
 }
 
+type MetricDataPoint struct {
+	MetricName              string
+	MetricDescription       string
+	MetricUnit              string
+	MetricType              string // "gauge", "sum", "histogram"
+	TimeUnixNano            int64
+	StartTimeUnixNano       int64
+	ValueDouble             float64
+	ValueInt                int64
+	AggregationTemporality  string
+	IsMonotonic             bool
+	HistogramCount          int64
+	HistogramSum            float64
+	HistogramMin            float64
+	HistogramMax            float64
+	HistogramBucketCounts   []int64
+	HistogramExplicitBounds []float64
+	AttributesKey           []string
+	AttributesValue         []string
+	ResourceAttributesKey   []string
+	ResourceAttributesValue []string
+	ScopeName               string
+}
+
 type Span struct {
 	TraceID            string
 	SpanID             string

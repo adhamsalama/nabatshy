@@ -424,6 +424,29 @@ func (c *TelemetryController) debugQuery(w http.ResponseWriter, r *http.Request)
 	json.NewEncoder(w).Encode(results)
 }
 
+func (c *TelemetryController) getOtelMetrics(w http.ResponseWriter, r *http.Request) {
+	limitStr := r.URL.Query().Get("limit")
+	if limitStr == "" {
+		limitStr = "200"
+	}
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit <= 0 {
+		http.Error(w, "invalid limit", http.StatusBadRequest)
+		return
+	}
+
+	metricName := r.URL.Query().Get("metric_name")
+
+	rows, err := c.service.GetOtelMetrics(r.Context(), limit, metricName)
+	if err != nil {
+		http.Error(w, "failed to fetch metrics: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(rows)
+}
+
 func (c *TelemetryController) RegisterRoutes(r chi.Router) {
 	r.Get("/v1/traces/slowest", c.getTopNSlowestTraces)
 	r.Get("/v1/traces/service/{service}", c.getServiceTraces)
@@ -442,5 +465,6 @@ func (c *TelemetryController) RegisterRoutes(r chi.Router) {
 	r.Get("/api/metrics/errors", c.getErrorCounts)
 	r.Get("/api/metrics/search", c.getSearchMetrics)
 	r.Get("/api/services", c.getUniqueServiceNames)
+	r.Get("/api/otel-metrics", c.getOtelMetrics)
 	r.Get("/debug/query", c.debugQuery)
 }
