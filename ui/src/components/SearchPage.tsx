@@ -578,7 +578,17 @@ export const SearchPage: React.FC = () => {
       )}
       {!loading && searchResponse && (
         <Box sx={{ gridColumn: 'span 12' }}>
-          <TraceCountChart data={traceCountSeries} />
+          <TraceCountChart
+            data={traceCountSeries}
+            onRangeSelect={(start, end) => {
+              const s = new Date(start);
+              const e = new Date(end);
+              setStartDate(s);
+              setEndDate(e);
+              setTimePreset('custom');
+              handleSearch(1, query, pageSize, sortField, sortOrder, s, e, selectedService, traceOrSpan, 'custom');
+            }}
+          />
         </Box>
       )}
       {!loading && (searchResponse?.results?.length ?? 0) > 0 && (

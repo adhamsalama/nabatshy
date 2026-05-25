@@ -9,45 +9,56 @@ import {
   Tooltip as ReTooltip,
   Legend,
   Line,
+  ReferenceArea,
 } from 'recharts';
+import { useChartBrush } from '../hooks/useChartBrush';
 
 export interface TimePercentile {
-  timestamp: string; // ISO string or Date-compatible
+  timestamp: string;
   value: number;
 }
 
 interface PercentileChartProps {
   data: TimePercentile[];
-  percentile: number; // e.g. 95
+  percentile: number;
+  onRangeSelect?: (start: string, end: string) => void;
 }
 
-const PercentileChart: React.FC<PercentileChartProps> = ({ data, percentile }) => {
+const PercentileChart: React.FC<PercentileChartProps> = ({ data, percentile, onRangeSelect }) => {
+  const { onMouseDown, onMouseMove, onMouseUp, refLeft, refRight, selecting } = useChartBrush(onRangeSelect);
+
   return (
     <Card>
       <CardContent>
-        <Typography variant="h6" gutterBottom>
-          P{percentile} Duration Over Time
-        </Typography>
-        <Box height={300}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+          <Typography variant="h6">P{percentile} Duration Over Time</Typography>
+          {onRangeSelect && (
+            <Typography variant="caption" color="text.secondary">drag to zoom into a range</Typography>
+          )}
+        </Box>
+        <Box height={300} sx={onRangeSelect ? { cursor: selecting ? 'col-resize' : 'crosshair', userSelect: 'none' } : {}}>
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data}>
+            <LineChart
+              data={data}
+              onMouseDown={onMouseDown}
+              onMouseMove={onMouseMove}
+              onMouseUp={onMouseUp}
+              onMouseLeave={onMouseUp}
+            >
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis
-                dataKey="timestamp"
-                tickFormatter={v => new Date(v).toLocaleString()}
-              />
+              <XAxis dataKey="timestamp" tickFormatter={v => new Date(v).toLocaleString()} />
               <YAxis domain={[0, 'auto']} unit="ms" width={60} />
-              <ReTooltip
-                labelFormatter={v => new Date(v).toLocaleString()}
-                formatter={val => [`${(val as number).toFixed(2)} ms`, `P${percentile}`]}
-              />
+              {!selecting && (
+                <ReTooltip
+                  labelFormatter={v => new Date(v).toLocaleString()}
+                  formatter={val => [`${(val as number).toFixed(2)} ms`, `P${percentile}`]}
+                />
+              )}
               <Legend />
-              <Line
-                type="monotone"
-                dataKey="value"
-                name={`P${percentile} Duration (ms)`}
-                stroke="#ff7300"
-              />
+              <Line type="monotone" dataKey="value" name={`P${percentile} Duration (ms)`} stroke="#ff7300" dot={false} />
+              {selecting && refLeft && refRight && (
+                <ReferenceArea x1={refLeft} x2={refRight} fill="#ff7300" fillOpacity={0.25} strokeOpacity={0.5} />
+              )}
             </LineChart>
           </ResponsiveContainer>
         </Box>

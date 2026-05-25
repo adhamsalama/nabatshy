@@ -107,8 +107,10 @@ export const MonitoringPage: React.FC = () => {
     return { start, end };
   }, [timePresetIdx, isCustom, customStart, customEnd]);
 
-  const fetchMetrics = useCallback(async () => {
-    const { start, end } = getDateRange();
+  const fetchMetrics = useCallback(async (overrideStart?: Date, overrideEnd?: Date) => {
+    const { start: rangeStart, end: rangeEnd } = getDateRange();
+    const start = overrideStart ?? rangeStart;
+    const end = overrideEnd ?? rangeEnd;
     if (isNaN(start.getTime()) || isNaN(end.getTime())) { setError('Invalid date range'); return; }
 
     setLoading(true);
@@ -160,6 +162,15 @@ export const MonitoringPage: React.FC = () => {
     const id = setInterval(() => fetchRef.current(), refreshInterval * 1000);
     return () => clearInterval(id);
   }, [autoRefresh, refreshInterval]);
+
+  const handleChartRangeSelect = useCallback((startStr: string, endStr: string) => {
+    const s = new Date(startStr);
+    const e = new Date(endStr);
+    setCustomStart(s);
+    setCustomEnd(e);
+    setTimePresetIdx(TIME_PRESETS.findIndex(p => p.label === 'Custom'));
+    fetchRef.current(s, e);
+  }, []);
 
   useEffect(() => {
     fetch(`${config.backendUrl}/api/services`)
@@ -249,7 +260,7 @@ export const MonitoringPage: React.FC = () => {
           </FormControl>
         )}
 
-        <Button variant="outlined" startIcon={<RefreshIcon />} onClick={fetchMetrics} disabled={loading}>
+        <Button variant="outlined" startIcon={<RefreshIcon />} onClick={() => fetchMetrics()} disabled={loading}>
           Refresh
         </Button>
       </Box>
@@ -291,10 +302,10 @@ export const MonitoringPage: React.FC = () => {
 
           {/* Charts */}
           <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 2, mb: 3 }}>
-            <PercentileChart data={percentileSeries} percentile={percentile} />
-            <TraceCountChart data={traceCountSeries} />
-            <AvgDurationChart data={avgDurationSeries} />
-            <ErrorCountChart data={errorCountSeries} />
+            <PercentileChart data={percentileSeries} percentile={percentile} onRangeSelect={handleChartRangeSelect} />
+            <TraceCountChart data={traceCountSeries} onRangeSelect={handleChartRangeSelect} />
+            <AvgDurationChart data={avgDurationSeries} onRangeSelect={handleChartRangeSelect} />
+            <ErrorCountChart data={errorCountSeries} onRangeSelect={handleChartRangeSelect} />
           </Box>
 
           {/* Slowest traces */}
