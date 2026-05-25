@@ -126,7 +126,7 @@ const FilterChipInput = ({ value, onChange, onSearch }: { value: string; onChang
   );
 };
 
-export const SearchPage: React.FC = () => {
+export const TracesPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -334,7 +334,7 @@ export const SearchPage: React.FC = () => {
     if (!silent) { setLoading(true); setError(null); }
 
     try {
-      const searchUrl = new URL(`${config.backendUrl}/v1/search`);
+      const searchUrl = new URL(`${config.backendUrl}/api/traces/search`);
       Object.entries(params).forEach(([k, v]) => searchUrl.searchParams.set(k, v));
 
       const searchResponse = await fetch(searchUrl.toString());

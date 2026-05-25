@@ -93,8 +93,8 @@ func InitDuckDB() *sql.DB {
 	if _, err := db.Exec("INSTALL fts; LOAD fts"); err != nil {
 		panic(fmt.Sprintf("loading fts extension: %v", err))
 	}
-	if _, err := db.Exec("PRAGMA create_fts_index('log_record', 'rowid', 'body', overwrite=1)"); err != nil {
-		panic(fmt.Sprintf("building fts index: %v", err))
-	}
+	// Create FTS index only if it doesn't already exist. The LogWriter rebuilds
+	// it with overwrite=1 after each batch, so we just need it present on startup.
+	db.Exec("PRAGMA create_fts_index('log_record', 'rowid', 'body')")
 	return db
 }

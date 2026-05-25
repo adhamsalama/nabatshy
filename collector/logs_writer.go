@@ -23,6 +23,8 @@ func NewLogWriter(db *sql.DB) *LogWriter {
 			if _, err := db.ExecContext(context.Background(), "PRAGMA create_fts_index('log_record', 'rowid', 'body', overwrite=1)"); err != nil {
 				fmt.Printf("fts index rebuild error: %v\n", err)
 			}
+			// Flush WAL so the FTS DROP+CREATE doesn't corrupt next startup.
+			db.ExecContext(context.Background(), "CHECKPOINT")
 		}
 	}()
 	return w

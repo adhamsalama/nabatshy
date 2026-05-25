@@ -6,8 +6,8 @@ import DarkModeIcon from '@mui/icons-material/DarkMode';
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import { TraceDetails } from './components/TraceDetails';
 import { SpanDetails } from './components/SpanDetails';
-import { SearchPage } from './components/SearchPage';
-import { MonitoringPage } from './components/MonitoringPage';
+import { TracesPage } from './components/TracesPage';
+import { DashboardsPage } from './components/DashboardsPage';
 import { CronPage } from './components/CronPage';
 import { MetricsPage } from './components/MetricsPage';
 import { LogsPage } from './components/LogsPage';
@@ -109,20 +109,20 @@ function App() {
                 />
               </Typography>
             </Box>
-            <Button disableRipple color="inherit" component={Link} to="/monitoring" sx={{ color: 'white', '&:hover': { backgroundColor: 'rgba(255,255,255,0.15)', color: 'white' } }}>
-              Monitoring
-            </Button>
-            <Button disableRipple color="inherit" component={Link} to="/search" sx={{ color: 'white', '&:hover': { backgroundColor: 'rgba(255,255,255,0.15)', color: 'white' } }}>
-              Search
-            </Button>
-            <Button disableRipple color="inherit" component={Link} to="/cron" sx={{ color: 'white', '&:hover': { backgroundColor: 'rgba(255,255,255,0.15)', color: 'white' } }}>
-              Cron
+            <Button disableRipple color="inherit" component={Link} to="/traces" sx={{ color: 'white', '&:hover': { backgroundColor: 'rgba(255,255,255,0.15)', color: 'white' } }}>
+              Traces
             </Button>
             <Button disableRipple color="inherit" component={Link} to="/metrics" sx={{ color: 'white', '&:hover': { backgroundColor: 'rgba(255,255,255,0.15)', color: 'white' } }}>
               Metrics
             </Button>
             <Button disableRipple color="inherit" component={Link} to="/logs" sx={{ color: 'white', '&:hover': { backgroundColor: 'rgba(255,255,255,0.15)', color: 'white' } }}>
               Logs
+            </Button>
+            <Button disableRipple color="inherit" component={Link} to="/dashboards" sx={{ color: 'white', '&:hover': { backgroundColor: 'rgba(255,255,255,0.15)', color: 'white' } }}>
+              Dashboards
+            </Button>
+            <Button disableRipple color="inherit" component={Link} to="/cron" sx={{ color: 'white', '&:hover': { backgroundColor: 'rgba(255,255,255,0.15)', color: 'white' } }}>
+              Cron
             </Button>
             <IconButton disableRipple color="inherit" onClick={() => setDarkMode(d => { localStorage.setItem('darkMode', String(!d)); return !d; })} sx={{ color: 'white', '&:hover': { backgroundColor: 'rgba(255,255,255,0.15)', color: 'white' } }}>
               {darkMode ? <LightModeIcon /> : <DarkModeIcon />}
@@ -131,11 +131,11 @@ function App() {
         </AppBar>
         <Container maxWidth="lg" sx={{ py: 4 }}>
           <Routes>
-            <Route path="/" element={<SearchPage />} />
+            <Route path="/" element={<TracesPage />} />
+            <Route path="/traces" element={<TracesPage />} />
             <Route path="/traces/:traceId" element={<TraceDetails />} />
             <Route path="/spans/:spanId" element={<SpanDetails />} />
-            <Route path="/search" element={<SearchPage />} />
-            <Route path="/monitoring" element={<MonitoringPage />} />
+            <Route path="/dashboards" element={<DashboardsPage />} />
             <Route path="/cron" element={<CronPage />} />
             <Route path="/metrics" element={<MetricsPage />} />
             <Route path="/logs" element={<LogsPage />} />

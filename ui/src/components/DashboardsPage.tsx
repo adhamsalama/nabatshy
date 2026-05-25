@@ -82,7 +82,7 @@ const StatCard: React.FC<StatCardProps> = ({ label, value, sub, color }) => (
   </Card>
 );
 
-export const MonitoringPage: React.FC = () => {
+export const DashboardsPage: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -184,7 +184,7 @@ export const MonitoringPage: React.FC = () => {
       errorUrl.searchParams.set('end', end.toISOString());
       if (selectedService) errorUrl.searchParams.set('service', selectedService);
 
-      const slowUrl = new URL(`${config.backendUrl}/v1/traces/slowest`);
+      const slowUrl = new URL(`${config.backendUrl}/api/traces/slowest`);
       slowUrl.searchParams.set('n', '20');
       slowUrl.searchParams.set('start', start.toISOString());
       slowUrl.searchParams.set('end', end.toISOString());

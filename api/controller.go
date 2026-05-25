@@ -544,14 +544,14 @@ func (c *TelemetryController) getLogVolume(w http.ResponseWriter, r *http.Reques
 }
 
 func (c *TelemetryController) RegisterRoutes(r chi.Router) {
-	r.Get("/v1/traces/slowest", c.getTopNSlowestTraces)
-	r.Get("/v1/traces/service/{service}", c.getServiceTraces)
-	r.Get("/v1/traces/{trace_id}", c.getTraceDetails)
-	r.Get("/v1/traces/endpoints", c.getEndpointLatencies)
-	r.Get("/v1/traces/dependencies", c.getServiceDependencies)
-	r.Get("/v1/traces/heatmap", c.getTraceHeatmap)
-	r.Get("/v1/spans/{span_id}", c.getSpanDetails)
-	r.Get("/v1/search", c.searchTraces)
+	r.Get("/api/traces/slowest", c.getTopNSlowestTraces)
+	r.Get("/api/traces/service/{service}", c.getServiceTraces)
+	r.Get("/api/traces/{trace_id}", c.getTraceDetails)
+	r.Get("/api/traces/endpoints", c.getEndpointLatencies)
+	r.Get("/api/traces/dependencies", c.getServiceDependencies)
+	r.Get("/api/traces/heatmap", c.getTraceHeatmap)
+	r.Get("/api/spans/{span_id}", c.getSpanDetails)
+	r.Get("/api/traces/search", c.searchTraces)
 
 	r.Get("/api/metrics/traces", c.getTraceMetrics)
 	r.Get("/api/metrics/services", c.getServiceMetrics)
