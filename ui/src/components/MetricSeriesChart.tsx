@@ -5,7 +5,6 @@ import {
   ResponsiveContainer,
   LineChart, Line,
   AreaChart, Area,
-  BarChart, Bar,
   CartesianGrid, XAxis, YAxis,
   Tooltip as ReTooltip, Legend,
   ReferenceArea,
@@ -40,7 +39,7 @@ function seriesKey(labels: Record<string, string>): string {
   return entries.map(([, v]) => v).join(' · ');
 }
 
-function buildChartData(series: MetricSeries[], metricType: string): Record<string, unknown>[] {
+function buildChartData(series: MetricSeries[]): Record<string, unknown>[] {
   const timeSet = new Set<number>();
   series.forEach(s => s.points.forEach(p => timeSet.add(p.time)));
   const times = Array.from(timeSet).sort((a, b) => a - b);
@@ -50,13 +49,7 @@ function buildChartData(series: MetricSeries[], metricType: string): Record<stri
     series.forEach(s => {
       const key = seriesKey(s.labels);
       const pt = s.points.find(p => p.time === t);
-      if (metricType === 'histogram') {
-        // bar height = request count; keep avg in a separate key for tooltip
-        row[key] = pt !== undefined ? (pt.histogram_count ?? 0) : null;
-        row[`${key}__avg`] = pt !== undefined ? pt.value : null;
-      } else {
-        row[key] = pt !== undefined ? pt.value : null;
-      }
+      row[key] = pt !== undefined ? pt.value : null;
     });
     return row;
   });
@@ -79,13 +72,11 @@ const MetricSeriesChart: React.FC<Props> = ({ series, unit, metricType, title, o
   };
   const { onMouseDown, onMouseMove, onMouseUp, refLeft, refRight, selecting } = useChartBrush(onRangeSelect);
 
-  const data = buildChartData(series, metricType);
+  const data = buildChartData(series);
   const keys = series.map(s => seriesKey(s.labels));
   const brushProps = { onMouseDown, onMouseMove, onMouseUp, onMouseLeave: onMouseUp };
 
-  const yAxisLabel = metricType === 'histogram'
-    ? 'count'
-    : unit || undefined;
+  const yAxisLabel = unit || undefined;
 
   const yAxis = (
     <YAxis
@@ -108,16 +99,10 @@ const MetricSeriesChart: React.FC<Props> = ({ series, unit, metricType, title, o
     <ReTooltip
       contentStyle={tooltipStyle}
       labelFormatter={v => new Date(v as string).toLocaleString()}
-      formatter={(val, name: string) => {
-        if (name.endsWith('__avg')) return null as unknown as [string, string];
-        if (metricType === 'histogram') {
-          return [`${typeof val === 'number' ? val.toLocaleString() : '—'} requests`, name];
-        }
-        return [
-          typeof val === 'number' ? `${tickFmt(val)}${unit ? ' ' + unit : ''}` : '—',
-          name,
-        ];
-      }}
+      formatter={(val, name: string) => [
+        typeof val === 'number' ? `${tickFmt(val)}${unit ? ' ' + unit : ''}` : '—',
+        name,
+      ]}
     />
   ) : null;
 
@@ -135,9 +120,9 @@ const MetricSeriesChart: React.FC<Props> = ({ series, unit, metricType, title, o
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
           <Typography variant="h6">{title || 'Metric Over Time'}</Typography>
           <Typography variant="caption" color="text.secondary">
-            {metricType === 'gauge' && 'line chart · instantaneous value'}
-            {metricType === 'sum' && 'area chart · cumulative value'}
-            {metricType === 'histogram' && 'bar chart · request count per bucket'}
+            {metricType === 'gauge' && 'line · instantaneous value'}
+            {metricType === 'sum' && 'area · cumulative value'}
+            {metricType === 'histogram' && 'line · avg value (sum/count)'}
             {onRangeSelect && ' · drag to zoom'}
           </Typography>
         </Box>
@@ -177,16 +162,16 @@ const MetricSeriesChart: React.FC<Props> = ({ series, unit, metricType, title, o
                 {refArea}
               </AreaChart>
 
-            /* ── histogram: bar chart (count per bucket) ── */
+            /* ── histogram: line chart of avg value (sum/count) ── */
             ) : (
-              <BarChart data={data} {...brushProps}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <LineChart data={data} {...brushProps}>
+                <CartesianGrid strokeDasharray="3 3" />
                 {xAxis}{yAxis}{tooltip}<Legend />
                 {keys.map((key, i) => (
-                  <Bar key={key} dataKey={key} fill={COLORS[i % COLORS.length]} fillOpacity={0.8} maxBarSize={40} />
+                  <Line key={key} type="monotone" dataKey={key} stroke={COLORS[i % COLORS.length]} dot={false} connectNulls strokeWidth={1.5} />
                 ))}
                 {refArea}
-              </BarChart>
+              </LineChart>
             )}
 
           </ResponsiveContainer>
