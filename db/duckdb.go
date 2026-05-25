@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"os"
 
 	_ "github.com/duckdb/duckdb-go/v2"
@@ -85,6 +86,9 @@ func InitDuckDB(inMemory bool) *sql.DB {
 	}
 	if inMemory {
 		path = ""
+		log.Println("[duckdb] mode: in-memory (no persistence)")
+	} else {
+		log.Printf("[duckdb] mode: persistent (%s)\n", path)
 	}
 	db, err := sql.Open("duckdb", path)
 	if err != nil {
