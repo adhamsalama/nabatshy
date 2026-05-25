@@ -12,7 +12,7 @@ import (
 )
 
 // ServeUI serves static UI files using chi router and embed.FS
-func ServeUI(content embed.FS, uiDir string) {
+func ServeUI(content embed.FS, uiDir string, port string) {
 	r := chi.NewRouter()
 	// Serve static assets
 	r.Get("/assets/*", func(w http.ResponseWriter, r *http.Request) {
@@ -66,7 +66,7 @@ func ServeUI(content embed.FS, uiDir string) {
 		w.Write(data)
 	})
 
-	addr := ":8081"
+	addr := ":" + port
 
 	log.Printf("[ui] listening on %s\n", addr)
 	log.Fatal(http.ListenAndServe(addr, r))

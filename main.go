@@ -2,6 +2,8 @@ package main
 
 import (
 	"embed"
+	"flag"
+	"os"
 
 	"nabatshy/api"
 	"nabatshy/collector"
@@ -14,11 +16,23 @@ var content embed.FS
 
 const uiDir = "ui/dist"
 
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
 func main() {
 	utils.LoadEnv(".env")
 
+	otelPort := flag.String("otel-port", envOr("OTEL_PORT", "4318"), "OTel collector port")
+	apiPort := flag.String("api-port", envOr("API_PORT", "3000"), "API server port")
+	uiPort := flag.String("ui-port", envOr("UI_PORT", "8081"), "UI server port")
+	flag.Parse()
+
 	sqlDB := db.InitDuckDB()
-	go func() { collector.Run(sqlDB) }()
-	go utils.ServeUI(content, uiDir)
-	api.Run(sqlDB)
+	go func() { collector.Run(sqlDB, *otelPort) }()
+	go utils.ServeUI(content, uiDir, *uiPort)
+	api.Run(sqlDB, *apiPort)
 }

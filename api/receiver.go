@@ -10,7 +10,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-func Run(db *sql.DB) {
+func Run(db *sql.DB, port string) {
 	dialect := goqu.Dialect("default")
 	telService := TelemetryService{
 		Ch: db,
@@ -37,7 +37,7 @@ func Run(db *sql.DB) {
 	telController.RegisterRoutes(r)
 	cronController := NewCronController(db)
 	cronController.RegisterRoutes(r)
-	addr := ":3000"
+	addr := ":" + port
 	log.Printf("[api] listening on %s\n", addr)
 	log.Fatal(http.ListenAndServe(addr, r))
 }

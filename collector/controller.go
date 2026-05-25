@@ -283,7 +283,7 @@ func (c *TelemetryCollectorController) RegisterRoutes(r chi.Router) {
 	r.Post("/v1/logs", c.ingestLogsHTTPRequest)
 }
 
-func Run(db *sql.DB) {
+func Run(db *sql.DB, port string) {
 	telService := TelemetryCollectorService{
 		writer: NewSpanWriter(db),
 	}
@@ -302,7 +302,7 @@ func Run(db *sql.DB) {
 	r := chi.NewRouter()
 
 	telController.RegisterRoutes(r)
-	addr := ":4318"
+	addr := ":" + port
 	log.Printf("[otel] listening on %s\n", addr)
 	log.Fatal(http.ListenAndServe(addr, r))
 }
