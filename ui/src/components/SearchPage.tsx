@@ -76,8 +76,16 @@ export const SearchPage: React.FC = () => {
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
 
   const DEFAULT_COLUMNS = ['traceId', 'spanId', 'name', 'service', 'duration', 'startTime', 'endTime'];
-  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(new Set(DEFAULT_COLUMNS));
-  const [extraColumns, setExtraColumns] = useState<string[]>([]);
+  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(() => {
+    const p = new URLSearchParams(window.location.search);
+    const v = p.get('columns');
+    return v ? new Set(v.split(',').filter(Boolean)) : new Set(DEFAULT_COLUMNS);
+  });
+  const [extraColumns, setExtraColumns] = useState<string[]>(() => {
+    const p = new URLSearchParams(window.location.search);
+    const v = p.get('extraColumns');
+    return v ? v.split(',').filter(Boolean) : [];
+  });
   const [columnAnchorEl, setColumnAnchorEl] = useState<HTMLElement | null>(null);
 
   const toggleColumn = (id: string) => {
@@ -94,10 +102,16 @@ export const SearchPage: React.FC = () => {
   };
 
   const [timePreset, setTimePreset] = useState<string>('5m');
-  const [autoRefresh, setAutoRefresh] = useState(false);
-  const [intervalPreset, setIntervalPreset] = useState<string>('30');
-  const [customIntervalInput, setCustomIntervalInput] = useState<string>('');
-  const [refreshIntervalSecs, setRefreshIntervalSecs] = useState<number>(30);
+  const [autoRefresh, setAutoRefresh] = useState(() => new URLSearchParams(window.location.search).get('autoRefresh') === 'true');
+  const [intervalPreset, setIntervalPreset] = useState<string>(() => new URLSearchParams(window.location.search).get('intervalPreset') ?? '30');
+  const [customIntervalInput, setCustomIntervalInput] = useState<string>(() => new URLSearchParams(window.location.search).get('customInterval') ?? '');
+  const [refreshIntervalSecs, setRefreshIntervalSecs] = useState<number>(() => {
+    const p = new URLSearchParams(window.location.search);
+    const ip = p.get('intervalPreset');
+    if (ip && ip !== 'custom') return parseInt(ip);
+    const ci = p.get('customInterval');
+    return ci ? parseInt(ci) : 30;
+  });
 
   const getPresetDates = (preset: string): { start: Date; end: Date } => {
     const end = new Date();
@@ -134,9 +148,21 @@ export const SearchPage: React.FC = () => {
     const sz = parseInt(searchParams.get('pageSize') || '20');
     const svc = searchParams.get('service') ?? '';
     const presetParam = searchParams.get('timePreset') ?? '5m';
+    const autoRefreshParam = searchParams.get('autoRefresh') === 'true';
+    const intervalPresetParam = searchParams.get('intervalPreset') ?? '30';
+    const customIntervalParam = searchParams.get('customInterval') ?? '';
 
     setQuery(q);
     setTimePreset(presetParam);
+    setAutoRefresh(autoRefreshParam);
+    setIntervalPreset(intervalPresetParam);
+    setCustomIntervalInput(customIntervalParam);
+    if (intervalPresetParam !== 'custom') {
+      setRefreshIntervalSecs(parseInt(intervalPresetParam));
+    } else if (customIntervalParam) {
+      const secs = parseInt(customIntervalParam);
+      if (!isNaN(secs) && secs >= 1) setRefreshIntervalSecs(secs);
+    }
     if (start) setStartDate(new Date(start));
     if (end) setEndDate(new Date(end));
     if (sf) setSortField(sf);
@@ -211,9 +237,12 @@ export const SearchPage: React.FC = () => {
       urlParams.start = resolvedStart.toISOString();
       urlParams.end = resolvedEnd.toISOString();
     }
-    if (service) {
-      urlParams.service = service;
-    }
+    if (service) urlParams.service = service;
+    urlParams.columns = [...visibleColumns].join(',');
+    if (extraColumns.length > 0) urlParams.extraColumns = extraColumns.join(',');
+    urlParams.autoRefresh = String(autoRefresh);
+    urlParams.intervalPreset = intervalPreset;
+    if (intervalPreset === 'custom' && customIntervalInput) urlParams.customInterval = customIntervalInput;
     if (!silent) setSearchParams(urlParams);
     if (!silent) { setLoading(true); setError(null); }
 
@@ -271,6 +300,21 @@ export const SearchPage: React.FC = () => {
     const id = setInterval(() => silentRefreshRef.current(), refreshIntervalSecs * 1000);
     return () => clearInterval(id);
   }, [autoRefresh, refreshIntervalSecs]);
+
+  // Sync UI-only state changes (columns, auto-refresh) back to URL without triggering a search
+  useEffect(() => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev.toString());
+      next.set('columns', [...visibleColumns].join(','));
+      if (extraColumns.length > 0) next.set('extraColumns', extraColumns.join(','));
+      else next.delete('extraColumns');
+      next.set('autoRefresh', String(autoRefresh));
+      next.set('intervalPreset', intervalPreset);
+      if (intervalPreset === 'custom' && customIntervalInput) next.set('customInterval', customIntervalInput);
+      else next.delete('customInterval');
+      return next;
+    }, { replace: true } as never);
+  }, [visibleColumns, extraColumns, autoRefresh, intervalPreset, customIntervalInput, setSearchParams]);
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') handleSearch(1);
