@@ -292,7 +292,7 @@ export const SearchPage: React.FC = () => {
   const silentRefreshRef = useRef(() => {});
   useEffect(() => {
     silentRefreshRef.current = () =>
-      handleSearch(1, query, pageSize, sortField, sortOrder, startDate, endDate, selectedService, traceOrSpan, timePreset, true);
+      handleSearch(page, query, pageSize, sortField, sortOrder, startDate, endDate, selectedService, traceOrSpan, timePreset, true);
   });
 
   useEffect(() => {
