@@ -147,6 +147,7 @@ export const SearchPage: React.FC = () => {
   const [availableServices, setAvailableServices] = useState<string[]>([]);
 
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
+  const [selectedSpanId, setSelectedSpanId] = useState<string | null>(null);
 
   const DEFAULT_COLUMNS = ['traceId', 'spanId', 'name', 'service', 'duration', 'startTime', 'endTime'];
   const [visibleColumns, setVisibleColumns] = useState<Set<string>>(() => {
@@ -660,7 +661,7 @@ export const SearchPage: React.FC = () => {
                   {searchResponse?.results?.map((r, i) => (
                     <TableRow
                       key={`${r.TraceID}-${r.SpanID}-${i}`}
-                      onClick={() => setSelectedTraceId(r.TraceID)}
+                      onClick={() => { setSelectedTraceId(r.TraceID); setSelectedSpanId(r.SpanID); }}
                       sx={{
                         cursor: 'pointer',
                         backgroundColor: r.hasError ? 'rgba(244, 67, 54, 0.1)' : 'inherit',
@@ -727,6 +728,7 @@ export const SearchPage: React.FC = () => {
           {selectedTraceId && (
             <TraceDetails
               traceId={selectedTraceId}
+              initialSpanId={selectedSpanId ?? undefined}
               onAddToSearch={(key, value) => setQuery(prev => prev ? `${prev},${key}=${value}` : `${key}=${value}`)}
               onAddAsColumn={handleAddAsColumn}
             />

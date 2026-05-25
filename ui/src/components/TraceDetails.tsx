@@ -42,7 +42,7 @@ interface TraceSpan {
   events: SpanEvent[];
 }
 
-export const TraceDetails = ({ traceId: traceIdProp, onAddToSearch, onAddAsColumn }: { traceId?: string; onAddToSearch?: (key: string, value: string) => void; onAddAsColumn?: (key: string) => void } = {}) => {
+export const TraceDetails = ({ traceId: traceIdProp, initialSpanId, onAddToSearch, onAddAsColumn }: { traceId?: string; initialSpanId?: string; onAddToSearch?: (key: string, value: string) => void; onAddAsColumn?: (key: string) => void } = {}) => {
   const { traceId: traceIdParam } = useParams();
   const traceId = traceIdProp ?? traceIdParam;
   const [spans, setSpans] = useState<TraceSpan[]>([]);
@@ -62,6 +62,10 @@ export const TraceDetails = ({ traceId: traceIdProp, onAddToSearch, onAddAsColum
         }
         const data = await response.json();
         setSpans(data);
+        if (initialSpanId) {
+          const match = data.find((s: TraceSpan) => s.SpanID === initialSpanId);
+          if (match) setSelectedSpan(match);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load trace details');
       } finally {
@@ -69,7 +73,7 @@ export const TraceDetails = ({ traceId: traceIdProp, onAddToSearch, onAddAsColum
       }
     };
     fetchTraceDetails();
-  }, [traceId]);
+  }, [traceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch span details when selectedSpan changes
   useEffect(() => {
