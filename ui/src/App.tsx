@@ -11,7 +11,7 @@ import { MonitoringPage } from './components/MonitoringPage';
 import logo from '../../docs/assets/logo.png'; // adjust path if needed
 
 function App() {
-  const [darkMode, setDarkMode] = useState(true);
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('darkMode') !== 'false');
 
   const theme = createTheme({
     palette: {
@@ -48,7 +48,7 @@ function App() {
             <Button color="inherit" component={Link} to="/search">
               Search
             </Button>
-            <IconButton color="inherit" onClick={() => setDarkMode(d => !d)}>
+            <IconButton color="inherit" onClick={() => setDarkMode(d => { localStorage.setItem('darkMode', String(!d)); return !d; })}>
               {darkMode ? <LightModeIcon /> : <DarkModeIcon />}
             </IconButton>
           </Toolbar>
