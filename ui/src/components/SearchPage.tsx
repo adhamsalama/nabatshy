@@ -51,7 +51,7 @@ interface SearchResponse {
 
 export const SearchPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [traceOrSpan, setTraceOrSpan] = useState<"trace" | "span">("trace");
+  const [traceOrSpan, setTraceOrSpan] = useState<"trace" | "span" | "all">("trace");
 
   const [query, setQuery] = useState('');
   const [searchResponse, setSearchResponse] = useState<SearchResponse | null>(null);
@@ -121,7 +121,7 @@ export const SearchPage: React.FC = () => {
     if (!isNaN(sz)) setPageSize(sz);
     if (svc) setSelectedService(svc);
     if (traceOrSpanParam) {
-      setTraceOrSpan(traceOrSpanParam as "trace" | "span");
+      setTraceOrSpan(traceOrSpanParam as "trace" | "span" | "all");
     }
 
     handleSearch(
@@ -130,7 +130,7 @@ export const SearchPage: React.FC = () => {
       start ? new Date(start) : startDate,
       end ? new Date(end) : endDate,
       svc,
-      (traceOrSpanParam as "trace" | "span") || traceOrSpan,
+      (traceOrSpanParam as "trace" | "span" | "all") || traceOrSpan,
       presetParam,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -269,7 +269,7 @@ export const SearchPage: React.FC = () => {
   };
 
   const handleTraceOrSpanChange = (e: SelectChangeEvent<string>) => {
-    const newTraceOrSpan = e.target.value as "trace" | "span";
+    const newTraceOrSpan = e.target.value as "trace" | "span" | "all";
     setTraceOrSpan(newTraceOrSpan);
     handleSearch(1, query, pageSize, sortField, sortOrder, startDate, endDate, selectedService, newTraceOrSpan);
   };
@@ -393,9 +393,10 @@ export const SearchPage: React.FC = () => {
 
         <FormControl size="small" sx={{ minWidth: 200 }}>
           <InputLabel>Trace Or Span</InputLabel>
-          <Select value={traceOrSpan} label={traceOrSpan} onChange={handleTraceOrSpanChange}>
-            <MenuItem key="Trace" value="trace">Trace</MenuItem>
-            <MenuItem key="Span" value="span">Span</MenuItem>
+          <Select value={traceOrSpan} label="Trace Or Span" onChange={handleTraceOrSpanChange}>
+            <MenuItem value="all">All</MenuItem>
+            <MenuItem value="trace">Trace</MenuItem>
+            <MenuItem value="span">Span</MenuItem>
           </Select>
         </FormControl>
 
