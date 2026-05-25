@@ -27,6 +27,7 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import { format } from 'date-fns';
 import CloseIcon from '@mui/icons-material/Close';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import { useLocation, useNavigate } from 'react-router-dom';
 import PercentileChart, { TimePercentile } from './PercentileChart';
 import TraceCountChart from './TraceCountChart';
 import { TraceDetails } from './TraceDetails';
@@ -81,6 +82,12 @@ const StatCard: React.FC<StatCardProps> = ({ label, value, sub, color }) => (
 );
 
 export const MonitoringPage: React.FC = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const initParam = (key: string, fallback: string) =>
+    new URLSearchParams(window.location.search).get(key) ?? fallback;
+
   const [percentileSeries, setPercentileSeries] = useState<TimePercentile[]>([]);
   const [traceCountSeries, setTraceCountSeries] = useState<TimePercentile[]>([]);
   const [avgDurationSeries, setAvgDurationSeries] = useState<TimePercentile[]>([]);
@@ -89,16 +96,55 @@ export const MonitoringPage: React.FC = () => {
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [percentile, setPercentile] = useState<number>(95);
-  const [timePresetIdx, setTimePresetIdx] = useState(3); // Last 1h
-  const [selectedService, setSelectedService] = useState<string>('');
+  const [percentile, setPercentile] = useState<number>(() => parseInt(initParam('percentile', '95')));
+  const [timePresetIdx, setTimePresetIdx] = useState(() => {
+    const label = initParam('timePreset', 'Last 1h');
+    const idx = TIME_PRESETS.findIndex(p => p.label === label);
+    return idx >= 0 ? idx : 3;
+  });
+  const [selectedService, setSelectedService] = useState<string>(() => initParam('service', ''));
   const [availableServices, setAvailableServices] = useState<string[]>([]);
-  const [traceOrSpan, setTraceOrSpan] = useState<'trace' | 'span'>('trace');
-  const [autoRefresh, setAutoRefresh] = useState(false);
-  const [refreshInterval, setRefreshInterval] = useState(30);
-  const [customStart, setCustomStart] = useState(() => new Date(Date.now() - 60 * 60 * 1000));
-  const [customEnd, setCustomEnd] = useState(() => new Date());
+  const [traceOrSpan, setTraceOrSpan] = useState<'trace' | 'span'>(() =>
+    initParam('traceOrSpan', 'trace') === 'span' ? 'span' : 'trace'
+  );
+  const [autoRefresh, setAutoRefresh] = useState(() => initParam('autoRefresh', 'false') === 'true');
+  const [refreshInterval, setRefreshInterval] = useState(() => parseInt(initParam('refreshInterval', '30')));
+  const [customStart, setCustomStart] = useState(() => {
+    const s = initParam('start', '');
+    return s ? new Date(s) : new Date(Date.now() - 60 * 60 * 1000);
+  });
+  const [customEnd, setCustomEnd] = useState(() => {
+    const e = initParam('end', '');
+    return e ? new Date(e) : new Date();
+  });
   const isCustom = TIME_PRESETS[timePresetIdx].label === 'Custom';
+
+  const buildUrlParams = useCallback((overrides: {
+    timePresetIdx?: number; percentile?: number; service?: string;
+    traceOrSpan?: string; autoRefresh?: boolean; refreshInterval?: number;
+    customStart?: Date; customEnd?: Date;
+  } = {}) => {
+    const idx = overrides.timePresetIdx ?? timePresetIdx;
+    const preset = TIME_PRESETS[idx];
+    const params: Record<string, string> = {
+      timePreset: preset.label,
+      percentile: String(overrides.percentile ?? percentile),
+      traceOrSpan: overrides.traceOrSpan ?? traceOrSpan,
+      autoRefresh: String(overrides.autoRefresh ?? autoRefresh),
+      refreshInterval: String(overrides.refreshInterval ?? refreshInterval),
+    };
+    const svc = overrides.service !== undefined ? overrides.service : selectedService;
+    if (svc) params.service = svc;
+    if (preset.label === 'Custom') {
+      params.start = (overrides.customStart ?? customStart).toISOString();
+      params.end = (overrides.customEnd ?? customEnd).toISOString();
+    }
+    return params;
+  }, [timePresetIdx, percentile, traceOrSpan, autoRefresh, refreshInterval, selectedService, customStart, customEnd]);
+
+  const pushUrl = useCallback((overrides: Parameters<typeof buildUrlParams>[0] = {}) => {
+    navigate(`?${new URLSearchParams(buildUrlParams(overrides))}`, { replace: false, state: { internal: true } });
+  }, [navigate, buildUrlParams]);
 
   const getDateRange = useCallback(() => {
     if (isCustom) return { start: customStart, end: customEnd };
@@ -163,14 +209,41 @@ export const MonitoringPage: React.FC = () => {
     return () => clearInterval(id);
   }, [autoRefresh, refreshInterval]);
 
+  // Restore state from URL on back/forward navigation
+  useEffect(() => {
+    if ((location.state as { internal?: boolean })?.internal) return;
+    const p = new URLSearchParams(location.search);
+    const label = p.get('timePreset') ?? 'Last 1h';
+    const idx = TIME_PRESETS.findIndex(t => t.label === label);
+    const newIdx = idx >= 0 ? idx : 3;
+    const newPercentile = parseInt(p.get('percentile') || '95');
+    const newService = p.get('service') ?? '';
+    const newTOS = (p.get('traceOrSpan') === 'span' ? 'span' : 'trace') as 'trace' | 'span';
+    const newAutoRefresh = p.get('autoRefresh') === 'true';
+    const newInterval = parseInt(p.get('refreshInterval') || '30');
+    setTimePresetIdx(newIdx);
+    setPercentile(newPercentile);
+    setSelectedService(newService);
+    setTraceOrSpan(newTOS);
+    setAutoRefresh(newAutoRefresh);
+    setRefreshInterval(newInterval);
+    if (TIME_PRESETS[newIdx].label === 'Custom') {
+      const s = p.get('start'); const e = p.get('end');
+      if (s) setCustomStart(new Date(s));
+      if (e) setCustomEnd(new Date(e));
+    }
+  }, [location.key]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleChartRangeSelect = useCallback((startStr: string, endStr: string) => {
     const s = new Date(startStr);
     const e = new Date(endStr);
+    const customIdx = TIME_PRESETS.findIndex(p => p.label === 'Custom');
     setCustomStart(s);
     setCustomEnd(e);
-    setTimePresetIdx(TIME_PRESETS.findIndex(p => p.label === 'Custom'));
+    setTimePresetIdx(customIdx);
+    pushUrl({ customStart: s, customEnd: e, timePresetIdx: customIdx });
     fetchRef.current(s, e);
-  }, []);
+  }, [pushUrl]);
 
   useEffect(() => {
     fetch(`${config.backendUrl}/api/services`)
@@ -195,7 +268,11 @@ export const MonitoringPage: React.FC = () => {
       <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center', mb: 3 }}>
         <FormControl size="small" sx={{ minWidth: 140 }}>
           <InputLabel>Time Range</InputLabel>
-          <Select value={timePresetIdx} label="Time Range" onChange={e => setTimePresetIdx(Number(e.target.value))}>
+          <Select value={timePresetIdx} label="Time Range" onChange={e => {
+            const idx = Number(e.target.value);
+            setTimePresetIdx(idx);
+            pushUrl({ timePresetIdx: idx });
+          }}>
             {TIME_PRESETS.map((p, i) => <MenuItem key={i} value={i}>{p.label}</MenuItem>)}
           </Select>
         </FormControl>
@@ -207,7 +284,7 @@ export const MonitoringPage: React.FC = () => {
               type="datetime-local"
               size="small"
               value={format(customStart, "yyyy-MM-dd'T'HH:mm:ss")}
-              onChange={e => setCustomStart(new Date(e.target.value))}
+              onChange={e => { const s = new Date(e.target.value); setCustomStart(s); pushUrl({ customStart: s }); }}
               InputLabelProps={{ shrink: true }}
               inputProps={{ step: 1 }}
             />
@@ -216,7 +293,7 @@ export const MonitoringPage: React.FC = () => {
               type="datetime-local"
               size="small"
               value={format(customEnd, "yyyy-MM-dd'T'HH:mm:ss")}
-              onChange={e => setCustomEnd(new Date(e.target.value))}
+              onChange={e => { const d = new Date(e.target.value); setCustomEnd(d); pushUrl({ customEnd: d }); }}
               InputLabelProps={{ shrink: true }}
               inputProps={{ step: 1 }}
             />
@@ -225,14 +302,22 @@ export const MonitoringPage: React.FC = () => {
 
         <FormControl size="small" sx={{ minWidth: 120 }}>
           <InputLabel>Percentile</InputLabel>
-          <Select value={percentile} label="Percentile" onChange={e => setPercentile(Number(e.target.value))}>
+          <Select value={percentile} label="Percentile" onChange={e => {
+            const p = Number(e.target.value);
+            setPercentile(p);
+            pushUrl({ percentile: p });
+          }}>
             {percentileOptions.map(p => <MenuItem key={p} value={p}>P{p}</MenuItem>)}
           </Select>
         </FormControl>
 
         <FormControl size="small" sx={{ minWidth: 180 }}>
           <InputLabel shrink>Service</InputLabel>
-          <Select value={selectedService} label="Service" onChange={e => setSelectedService(e.target.value)} displayEmpty renderValue={(v: string) => v || 'All Services'} notched>
+          <Select value={selectedService} label="Service" onChange={e => {
+            const svc = e.target.value;
+            setSelectedService(svc);
+            pushUrl({ service: svc });
+          }} displayEmpty renderValue={(v: string) => v || 'All Services'} notched>
             <MenuItem value="">All Services</MenuItem>
             {availableServices.map(s => <MenuItem key={s} value={s}>{s}</MenuItem>)}
           </Select>
@@ -240,7 +325,11 @@ export const MonitoringPage: React.FC = () => {
 
         <FormControl size="small" sx={{ minWidth: 130 }}>
           <InputLabel>Type</InputLabel>
-          <Select value={traceOrSpan} label="Type" onChange={e => setTraceOrSpan(e.target.value as 'trace' | 'span')}>
+          <Select value={traceOrSpan} label="Type" onChange={e => {
+            const v = e.target.value as 'trace' | 'span';
+            setTraceOrSpan(v);
+            pushUrl({ traceOrSpan: v });
+          }}>
             <MenuItem value="trace">Trace</MenuItem>
             <MenuItem value="span">Span</MenuItem>
           </Select>
@@ -248,13 +337,21 @@ export const MonitoringPage: React.FC = () => {
 
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <Typography variant="body2">Auto-refresh</Typography>
-          <Switch checked={autoRefresh} onChange={e => setAutoRefresh(e.target.checked)} size="small" />
+          <Switch checked={autoRefresh} onChange={e => {
+            const v = e.target.checked;
+            setAutoRefresh(v);
+            pushUrl({ autoRefresh: v });
+          }} size="small" />
         </Box>
 
         {autoRefresh && (
           <FormControl size="small" sx={{ minWidth: 100 }}>
             <InputLabel>Interval</InputLabel>
-            <Select value={refreshInterval} label="Interval" onChange={e => setRefreshInterval(Number(e.target.value))}>
+            <Select value={refreshInterval} label="Interval" onChange={e => {
+              const v = Number(e.target.value);
+              setRefreshInterval(v);
+              pushUrl({ refreshInterval: v });
+            }}>
               {REFRESH_INTERVALS.map(r => <MenuItem key={r.seconds} value={r.seconds}>{r.label}</MenuItem>)}
             </Select>
           </FormControl>
