@@ -87,19 +87,33 @@ function formatValue(row: OtelMetricRow): string {
   return typeof v === 'number' ? v.toFixed(4) : String(v);
 }
 
-function formatMetricValue(v: number, unit: string): string {
-  if (unit === 's') {
-    if (v < 0.001) return `${(v * 1e6).toFixed(2)} µs`;
-    if (v < 1) return `${(v * 1000).toFixed(2)} ms`;
-    return `${v.toFixed(3)} s`;
+const BYTE_UNITS = new Set(['By', 'bytes', 'Bytes', 'byte']);
+const BYTE_METRIC_PATTERNS = [/memory/, /\.io$/, /network.*bytes/];
+
+function isBytesMetric(unit: string, metricName = ''): boolean {
+  if (BYTE_UNITS.has(unit)) return true;
+  if (unit === '') return BYTE_METRIC_PATTERNS.some(p => p.test(metricName));
+  return false;
+}
+
+function formatBytes(v: number): string {
+  if (v < 1024) return `${v.toFixed(0)} B`;
+  if (v < 1024 ** 2) return `${(v / 1024).toFixed(1)} KB`;
+  if (v < 1024 ** 3) return `${(v / 1024 ** 2).toFixed(2)} MB`;
+  return `${(v / 1024 ** 3).toFixed(2)} GB`;
+}
+
+function formatMetricValue(v: number, unit: string, metricName = ''): string {
+  if (unit === 's' || unit === 'ms') {
+    const ms = unit === 'ms' ? v : v * 1000;
+    if (ms < 1) return `${(ms * 1000).toFixed(2)} µs`;
+    if (ms < 1000) return `${ms.toFixed(2)} ms`;
+    return `${(ms / 1000).toFixed(3)} s`;
   }
-  if (unit === 'By') {
-    if (v < 1024) return `${v.toFixed(0)} B`;
-    if (v < 1024 * 1024) return `${(v / 1024).toFixed(1)} KB`;
-    return `${(v / 1024 / 1024).toFixed(2)} MB`;
-  }
+  if (isBytesMetric(unit, metricName)) return formatBytes(v);
   if (v === 0) return '0';
   if (Math.abs(v) < 0.0001) return v.toExponential(3);
+  if (Math.abs(v) >= 1e9) return `${(v / 1e9).toFixed(2)}B`;
   if (Math.abs(v) >= 1e6) return `${(v / 1e6).toFixed(2)}M`;
   if (Math.abs(v) >= 1e3) return `${(v / 1e3).toFixed(2)}k`;
   return v.toFixed(4);
@@ -380,7 +394,7 @@ export const MetricsPage: React.FC = () => {
   const totalCount = allPoints.reduce((a, p) => a + (p.histogram_count ?? 0), 0);
   const totalSum   = allPoints.reduce((a, p) => a + (p.histogram_sum ?? 0), 0);
 
-  const fmt = (v: number | null) => v !== null ? formatMetricValue(v, metricUnit) : '—';
+  const fmt = (v: number | null) => v !== null ? formatMetricValue(v, metricUnit, selectedMetric) : '—';
 
   // ── render ────────────────────────────────────────────────────────────────
 
