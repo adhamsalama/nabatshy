@@ -31,6 +31,13 @@ CREATE TABLE IF NOT EXISTS denormalized_span (
     events_name               VARCHAR[],
     events_attributes_key     VARCHAR[][],
     events_attributes_value   VARCHAR[][]
+);
+CREATE TABLE IF NOT EXISTS cron_jobs (
+    id          VARCHAR PRIMARY KEY,
+    name        VARCHAR NOT NULL,
+    query       VARCHAR NOT NULL,
+    interval_seconds INTEGER NOT NULL,
+    created_at  BIGINT NOT NULL
 );`
 
 func InitDuckDB() *sql.DB {
