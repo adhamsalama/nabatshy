@@ -161,6 +161,7 @@ export const SearchPage: React.FC = () => {
     return v ? v.split(',').filter(Boolean) : [];
   });
   const [columnAnchorEl, setColumnAnchorEl] = useState<HTMLElement | null>(null);
+  const columnsButtonRef = useRef<HTMLButtonElement>(null);
 
   const toggleColumn = (id: string) => {
     setVisibleColumns(prev => {
@@ -595,7 +596,7 @@ export const SearchPage: React.FC = () => {
         <>
           <Box sx={{ gridColumn: 'span 12' }}>
             <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-              <Button size="small" startIcon={<ViewColumnIcon />} onClick={e => setColumnAnchorEl(e.currentTarget)}>
+              <Button ref={columnsButtonRef} size="small" startIcon={<ViewColumnIcon />} onClick={() => setColumnAnchorEl(columnsButtonRef.current)}>
                 Columns
               </Button>
               <Popover
