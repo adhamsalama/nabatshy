@@ -176,6 +176,7 @@ export const SearchPage: React.FC = () => {
   };
 
   const [timePreset, setTimePreset] = useState<string>('5m');
+  const [customMinutesInput, setCustomMinutesInput] = useState<string>(() => new URLSearchParams(window.location.search).get('customMinutes') ?? '');
   const [autoRefresh, setAutoRefresh] = useState(() => new URLSearchParams(window.location.search).get('autoRefresh') === 'true');
   const [intervalPreset, setIntervalPreset] = useState<string>(() => new URLSearchParams(window.location.search).get('intervalPreset') ?? '30');
   const [customIntervalInput, setCustomIntervalInput] = useState<string>(() => new URLSearchParams(window.location.search).get('customInterval') ?? '');
@@ -187,11 +188,15 @@ export const SearchPage: React.FC = () => {
     return ci ? parseInt(ci) : 30;
   });
 
-  const getPresetDates = (preset: string): { start: Date; end: Date } => {
+  const getPresetDates = (preset: string, customMins?: string): { start: Date; end: Date } => {
     const end = new Date();
     const minutesMap: Record<string, number> = {
       '5m': 5, '15m': 15, '30m': 30, '1h': 60, '3h': 180, '24h': 1440,
     };
+    if (preset === 'custom_min') {
+      const mins = parseInt(customMins ?? customMinutesInput);
+      return { start: new Date(end.getTime() - (isNaN(mins) || mins < 1 ? 5 : mins) * 60 * 1000), end };
+    }
     return { start: new Date(end.getTime() - (minutesMap[preset] ?? 5) * 60 * 1000), end };
   };
 
@@ -226,9 +231,11 @@ export const SearchPage: React.FC = () => {
     const autoRefreshParam = searchParams.get('autoRefresh') === 'true';
     const intervalPresetParam = searchParams.get('intervalPreset') ?? '30';
     const customIntervalParam = searchParams.get('customInterval') ?? '';
+    const customMinutesParam = searchParams.get('customMinutes') ?? '';
 
     setQuery(q);
     setTimePreset(presetParam);
+    if (customMinutesParam) setCustomMinutesInput(customMinutesParam);
     setAutoRefresh(autoRefreshParam);
     setIntervalPreset(intervalPresetParam);
     setCustomIntervalInput(customIntervalParam);
@@ -322,6 +329,7 @@ export const SearchPage: React.FC = () => {
     urlParams.autoRefresh = String(autoRefresh);
     urlParams.intervalPreset = intervalPreset;
     if (intervalPreset === 'custom' && customIntervalInput) urlParams.customInterval = customIntervalInput;
+    if (preset === 'custom_min' && customMinutesInput) urlParams.customMinutes = customMinutesInput;
     if (!silent && !skipUrlPush) { navigate(`?${new URLSearchParams(urlParams)}`, { replace: false, state: { internal: true } }); }
     if (!silent) { setLoading(true); setError(null); }
 
@@ -433,10 +441,17 @@ export const SearchPage: React.FC = () => {
   const handlePresetChange = (e: SelectChangeEvent<string>) => {
     const value = e.target.value;
     setTimePreset(value);
-    if (value !== 'custom') {
+    if (value !== 'custom' && value !== 'custom_min') {
       const { start, end } = getPresetDates(value);
       handleSearch(1, query, pageSize, sortField, sortOrder, start, end, selectedService, traceOrSpan, value);
     }
+  };
+
+  const applyCustomMinutes = (input: string) => {
+    const mins = parseInt(input);
+    if (isNaN(mins) || mins < 1) return;
+    const { start, end } = getPresetDates('custom_min', input);
+    handleSearch(1, query, pageSize, sortField, sortOrder, start, end, selectedService, traceOrSpan, 'custom_min');
   };
 
   const handleIntervalPresetChange = (e: SelectChangeEvent<string>) => {
@@ -473,9 +488,25 @@ export const SearchPage: React.FC = () => {
             <MenuItem value="1h">Last 1 hour</MenuItem>
             <MenuItem value="3h">Last 3 hours</MenuItem>
             <MenuItem value="24h">Last 24 hours</MenuItem>
-            <MenuItem value="custom">Custom</MenuItem>
+            <MenuItem value="custom_min">Last N minutes</MenuItem>
+            <MenuItem value="custom">Custom range</MenuItem>
           </Select>
         </FormControl>
+
+        {timePreset === 'custom_min' && (
+          <TextField
+            label="Minutes"
+            type="number"
+            size="small"
+            sx={{ width: 100 }}
+            value={customMinutesInput}
+            onChange={e => setCustomMinutesInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') applyCustomMinutes(customMinutesInput); }}
+            onBlur={() => applyCustomMinutes(customMinutesInput)}
+            inputProps={{ min: 1 }}
+            autoFocus
+          />
+        )}
 
         {timePreset === 'custom' && (
           <>

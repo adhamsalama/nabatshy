@@ -44,6 +44,7 @@ const TIME_PRESETS = [
   { label: 'Last 1h',  minutes: 60 },
   { label: 'Last 3h',  minutes: 180 },
   { label: 'Last 24h', minutes: 1440 },
+  { label: 'Last N...',minutes: -1 },
   { label: 'Custom',   minutes: 0 },
 ];
 
@@ -117,12 +118,14 @@ export const MonitoringPage: React.FC = () => {
     const e = initParam('end', '');
     return e ? new Date(e) : new Date();
   });
+  const [customNMinutes, setCustomNMinutes] = useState(() => initParam('customNMinutes', '60'));
   const isCustom = TIME_PRESETS[timePresetIdx].label === 'Custom';
+  const isLastN = TIME_PRESETS[timePresetIdx].label === 'Last N...';
 
   const buildUrlParams = useCallback((overrides: {
     timePresetIdx?: number; percentile?: number; service?: string;
     traceOrSpan?: string; autoRefresh?: boolean; refreshInterval?: number;
-    customStart?: Date; customEnd?: Date;
+    customStart?: Date; customEnd?: Date; customNMinutes?: string;
   } = {}) => {
     const idx = overrides.timePresetIdx ?? timePresetIdx;
     const preset = TIME_PRESETS[idx];
@@ -139,8 +142,11 @@ export const MonitoringPage: React.FC = () => {
       params.start = (overrides.customStart ?? customStart).toISOString();
       params.end = (overrides.customEnd ?? customEnd).toISOString();
     }
+    if (preset.label === 'Last N...') {
+      params.customNMinutes = overrides.customNMinutes ?? customNMinutes;
+    }
     return params;
-  }, [timePresetIdx, percentile, traceOrSpan, autoRefresh, refreshInterval, selectedService, customStart, customEnd]);
+  }, [timePresetIdx, percentile, traceOrSpan, autoRefresh, refreshInterval, selectedService, customStart, customEnd, customNMinutes]);
 
   const pushUrl = useCallback((overrides: Parameters<typeof buildUrlParams>[0] = {}) => {
     navigate(`?${new URLSearchParams(buildUrlParams(overrides))}`, { replace: false, state: { internal: true } });
@@ -149,9 +155,13 @@ export const MonitoringPage: React.FC = () => {
   const getDateRange = useCallback(() => {
     if (isCustom) return { start: customStart, end: customEnd };
     const end = new Date();
+    if (isLastN) {
+      const mins = parseInt(customNMinutes) || 60;
+      return { start: new Date(end.getTime() - mins * 60 * 1000), end };
+    }
     const start = new Date(end.getTime() - TIME_PRESETS[timePresetIdx].minutes * 60 * 1000);
     return { start, end };
-  }, [timePresetIdx, isCustom, customStart, customEnd]);
+  }, [timePresetIdx, isCustom, isLastN, customStart, customEnd, customNMinutes]);
 
   const fetchMetrics = useCallback(async (overrideStart?: Date, overrideEnd?: Date) => {
     const { start: rangeStart, end: rangeEnd } = getDateRange();
@@ -232,6 +242,10 @@ export const MonitoringPage: React.FC = () => {
       if (s) setCustomStart(new Date(s));
       if (e) setCustomEnd(new Date(e));
     }
+    if (TIME_PRESETS[newIdx].label === 'Last N...') {
+      const n = p.get('customNMinutes');
+      if (n) setCustomNMinutes(n);
+    }
   }, [location.key]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleChartRangeSelect = useCallback((startStr: string, endStr: string) => {
@@ -298,6 +312,25 @@ export const MonitoringPage: React.FC = () => {
               inputProps={{ step: 1 }}
             />
           </>
+        )}
+
+        {isLastN && (
+          <TextField
+            label="Minutes"
+            type="number"
+            size="small"
+            value={customNMinutes}
+            onChange={e => {
+              const v = e.target.value;
+              setCustomNMinutes(v);
+              pushUrl({ customNMinutes: v });
+            }}
+            onBlur={() => fetchMetrics()}
+            onKeyDown={e => { if (e.key === 'Enter') fetchMetrics(); }}
+            InputLabelProps={{ shrink: true }}
+            inputProps={{ min: 1 }}
+            sx={{ width: 110 }}
+          />
         )}
 
         <FormControl size="small" sx={{ minWidth: 120 }}>
