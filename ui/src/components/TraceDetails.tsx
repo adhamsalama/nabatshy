@@ -18,6 +18,7 @@ import {
 } from '@mui/material';
 import ErrorIcon from '@mui/icons-material/Error';
 import { SpanDetails, SpanDetail } from './SpanDetails';
+import TraceMetricsPanel from './TraceMetricsPanel';
 import { config } from "../config.ts";
 
 interface SpanEvent {
@@ -113,6 +114,7 @@ export const TraceDetails = ({ traceId: traceIdProp, initialSpanId, onAddToSearc
 
   const traceMetadata = getSpansMetadata(spans);
   const totalDurationNS = traceMetadata.totalDuration;
+  const rootSpan = spans.find(s => !s.ParentSpanID);
 
   const hasError = (span: TraceSpan) => {
     return span.events?.some(event => event.name === 'exception') || false;
@@ -210,6 +212,13 @@ export const TraceDetails = ({ traceId: traceIdProp, initialSpanId, onAddToSearc
           <SpanDetails span={spanDetail} onAddToSearch={onAddToSearch} onAddAsColumn={onAddAsColumn} />
         )}
       </Box>
+      {rootSpan && (
+        <TraceMetricsPanel
+          startTimeNs={rootSpan.StartTimeNS}
+          endTimeNs={rootSpan.EndTimeNS}
+          serviceName={rootSpan.Service}
+        />
+      )}
     </Container>
   );
 };

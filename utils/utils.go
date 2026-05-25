@@ -87,8 +87,14 @@ func ParseDateRange(query url.Values, startField, endField, timeRangeField strin
 	startStr := query.Get(startField)
 	endStr := query.Get(endField)
 	if startStr != "" && endStr != "" {
-		startTime, err1 := time.Parse(time.RFC3339, startStr)
-		endTime, err2 := time.Parse(time.RFC3339, endStr)
+		parseTime := func(s string) (time.Time, error) {
+			if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
+				return t, nil
+			}
+			return time.Parse(time.RFC3339, s)
+		}
+		startTime, err1 := parseTime(startStr)
+		endTime, err2 := parseTime(endStr)
 		if err1 == nil && err2 == nil {
 			return DateRange{Start: startTime, End: endTime}, nil
 		}

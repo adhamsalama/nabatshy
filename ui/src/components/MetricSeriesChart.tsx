@@ -7,7 +7,7 @@ import {
   AreaChart, Area,
   CartesianGrid, XAxis, YAxis,
   Tooltip as ReTooltip, Legend,
-  ReferenceArea,
+  ReferenceArea, ReferenceLine,
 } from 'recharts';
 import { useChartBrush } from '../hooks/useChartBrush';
 
@@ -31,6 +31,7 @@ interface Props {
   metricType: string;
   title?: string;
   onRangeSelect?: (start: string, end: string) => void;
+  referenceTime?: string;
 }
 
 function seriesKey(labels: Record<string, string>): string {
@@ -63,7 +64,7 @@ const tickFmt = (v: unknown) => {
   return v.toFixed(v < 1 ? 3 : 1);
 };
 
-const MetricSeriesChart: React.FC<Props> = ({ series, unit, metricType, title, onRangeSelect }) => {
+const MetricSeriesChart: React.FC<Props> = ({ series, unit, metricType, title, onRangeSelect, referenceTime }) => {
   const theme = useTheme();
   const tooltipStyle = {
     backgroundColor: theme.palette.background.paper,
@@ -110,6 +111,15 @@ const MetricSeriesChart: React.FC<Props> = ({ series, unit, metricType, title, o
     <ReferenceArea x1={refLeft} x2={refRight} fill={COLORS[0]} fillOpacity={0.2} strokeOpacity={0.5} />
   ) : null;
 
+  const refLine = referenceTime ? (
+    <ReferenceLine
+      x={referenceTime}
+      stroke="#ef4444"
+      strokeDasharray="4 2"
+      label={{ value: 'trace', position: 'top', fontSize: 10, fill: '#ef4444' }}
+    />
+  ) : null;
+
   const cursorStyle = onRangeSelect
     ? { cursor: selecting ? 'col-resize' : 'crosshair', userSelect: 'none' as const }
     : {};
@@ -138,7 +148,7 @@ const MetricSeriesChart: React.FC<Props> = ({ series, unit, metricType, title, o
                 {keys.map((key, i) => (
                   <Line key={key} type="monotone" dataKey={key} stroke={COLORS[i % COLORS.length]} dot={false} connectNulls strokeWidth={1.5} />
                 ))}
-                {refArea}
+                {refArea}{refLine}
               </LineChart>
 
             /* ── sum: area chart ── */
@@ -159,7 +169,7 @@ const MetricSeriesChart: React.FC<Props> = ({ series, unit, metricType, title, o
                     strokeWidth={1.5}
                   />
                 ))}
-                {refArea}
+                {refArea}{refLine}
               </AreaChart>
 
             /* ── histogram: line chart of avg value (sum/count) ── */
@@ -170,7 +180,7 @@ const MetricSeriesChart: React.FC<Props> = ({ series, unit, metricType, title, o
                 {keys.map((key, i) => (
                   <Line key={key} type="monotone" dataKey={key} stroke={COLORS[i % COLORS.length]} dot={false} connectNulls strokeWidth={1.5} />
                 ))}
-                {refArea}
+                {refArea}{refLine}
               </LineChart>
             )}
 
