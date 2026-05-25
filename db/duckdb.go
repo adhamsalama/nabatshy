@@ -78,10 +78,13 @@ CREATE TABLE IF NOT EXISTS metric_data_point (
     scope_name                    VARCHAR
 );`
 
-func InitDuckDB() *sql.DB {
+func InitDuckDB(inMemory bool) *sql.DB {
 	path := os.Getenv("DUCKDB_PATH")
 	if path == "" {
 		path = "nabatshy.db"
+	}
+	if inMemory {
+		path = ""
 	}
 	db, err := sql.Open("duckdb", path)
 	if err != nil {
