@@ -42,13 +42,13 @@ function App() {
                 />
               </Typography>
             </Box>
-            <Button color="inherit" component={Link} to="/monitoring">
+            <Button disableRipple color="inherit" component={Link} to="/monitoring" sx={{ color: 'white', '&:hover': { backgroundColor: 'rgba(255,255,255,0.15)', color: 'white' } }}>
               Monitoring
             </Button>
-            <Button color="inherit" component={Link} to="/search">
+            <Button disableRipple color="inherit" component={Link} to="/search" sx={{ color: 'white', '&:hover': { backgroundColor: 'rgba(255,255,255,0.15)', color: 'white' } }}>
               Search
             </Button>
-            <IconButton color="inherit" onClick={() => setDarkMode(d => { localStorage.setItem('darkMode', String(!d)); return !d; })}>
+            <IconButton disableRipple color="inherit" onClick={() => setDarkMode(d => { localStorage.setItem('darkMode', String(!d)); return !d; })} sx={{ color: 'white', '&:hover': { backgroundColor: 'rgba(255,255,255,0.15)', color: 'white' } }}>
               {darkMode ? <LightModeIcon /> : <DarkModeIcon />}
             </IconButton>
           </Toolbar>
