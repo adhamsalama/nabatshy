@@ -368,8 +368,24 @@ export const LogsPage: React.FC = () => {
                         </TableCell>
                         <TableCell sx={{ fontFamily: 'monospace', fontSize: 11 }}>
                           {log.trace_id ? (
-                            <Link to={`/traces/${log.trace_id}`} style={{ color: 'inherit' }} onClick={e => e.stopPropagation()}>
-                              {log.trace_id.slice(0, 16)}…
+                            <Link
+                              to={`/traces/${log.trace_id}`}
+                              onClick={e => e.stopPropagation()}
+                              style={{ color: 'inherit', textDecoration: 'none' }}
+                            >
+                              <Box
+                                component="span"
+                                sx={{
+                                  display: 'inline-flex', alignItems: 'center', gap: 0.5,
+                                  '& .label': { display: 'inline' },
+                                  '& .open': { display: 'none', fontSize: 11, fontFamily: 'sans-serif', color: 'primary.main' },
+                                  '&:hover .label': { display: 'none' },
+                                  '&:hover .open': { display: 'inline' },
+                                }}
+                              >
+                                <span className="label">{log.trace_id.slice(0, 16)}…</span>
+                                <span className="open">Open trace ↗</span>
+                              </Box>
                             </Link>
                           ) : '—'}
                         </TableCell>
