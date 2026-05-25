@@ -307,7 +307,7 @@ const TraceDurationBars = ({ spans, onSpanClick, selectedSpanId }: { spans: Trac
                   <div>{span.Service}</div>
                   <div>Duration: {durationMs}</div>
                   <div>Start: +{fmtMs(span.StartTimeNS - traceStart)}</div>
-                  {itemHasError && <div style={{ color: '#fca5a5' }}>⚠ Exception</div>}
+                  {itemHasError && <div>❌ Exception</div>}
                 </Box>
               }
             >
@@ -328,7 +328,7 @@ const TraceDurationBars = ({ spans, onSpanClick, selectedSpanId }: { spans: Trac
               >
                 {/* Name column */}
                 <Box sx={{ width: NAME_COL, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 0.5, pl: 1, pr: 1, overflow: 'hidden' }}>
-                  {itemHasError && <Box component="span" sx={{ color: '#ef4444', flexShrink: 0 }}>⚠</Box>}
+                  {itemHasError && <Box component="span" sx={{ flexShrink: 0 }}>❌</Box>}
                   <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'text.primary', fontSize: 12, flex: 1 }}>
                     {span.Name}
                   </Box>
