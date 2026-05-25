@@ -174,8 +174,12 @@ type SlowTrace struct {
 	StartTime int64   `db:"start_time" json:"start_time"`
 }
 
-func (s *TelemetryService) GetTopSlowTraces(ctx context.Context, n uint, service string) ([]SlowTrace, error) {
-	conds := []goqu.Expression{goqu.C("parent_span_id").Eq("")}
+func (s *TelemetryService) GetTopSlowTraces(ctx context.Context, n uint, service string, dr DateRange) ([]SlowTrace, error) {
+	conds := []goqu.Expression{
+		goqu.C("parent_span_id").Eq(""),
+		goqu.C("start_time_unix_nano").Gte(dr.Start.UnixNano()),
+		goqu.C("start_time_unix_nano").Lte(dr.End.UnixNano()),
+	}
 	if service != "" {
 		conds = append(conds, goqu.And(
 			goqu.L("list_contains(resource_attributes_key, 'service.name')"),

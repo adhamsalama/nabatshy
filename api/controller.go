@@ -28,7 +28,8 @@ type TelemetryController struct {
 }
 
 func (c *TelemetryController) getTopNSlowestTraces(w http.ResponseWriter, r *http.Request) {
-	nParam := r.URL.Query().Get("n")
+	q := r.URL.Query()
+	nParam := q.Get("n")
 	if nParam == "" {
 		nParam = "10"
 	}
@@ -38,9 +39,13 @@ func (c *TelemetryController) getTopNSlowestTraces(w http.ResponseWriter, r *htt
 		return
 	}
 	n := uint(n64)
-	service := r.URL.Query().Get("service")
 
-	traces, err := c.service.GetTopSlowTraces(r.Context(), n, service)
+	dr, err := ParseDateRange(q, "start", "end", "time_range")
+	if err != nil {
+		dr = DateRange{Start: time.Now().Add(-time.Hour), End: time.Now()}
+	}
+
+	traces, err := c.service.GetTopSlowTraces(r.Context(), n, q.Get("service"), dr)
 	if err != nil {
 		http.Error(w, "failed to fetch traces: "+err.Error(), http.StatusInternalServerError)
 		return

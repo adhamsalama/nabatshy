@@ -186,6 +186,8 @@ export const MonitoringPage: React.FC = () => {
 
       const slowUrl = new URL(`${config.backendUrl}/v1/traces/slowest`);
       slowUrl.searchParams.set('n', '20');
+      slowUrl.searchParams.set('start', start.toISOString());
+      slowUrl.searchParams.set('end', end.toISOString());
       if (selectedService) slowUrl.searchParams.set('service', selectedService);
 
       const [metricsRes, errorRes, slowRes] = await Promise.all([
