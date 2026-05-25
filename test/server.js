@@ -2,11 +2,17 @@ require("./tracing");
 
 const express = require("express");
 const { trace, SpanStatusCode } = require("@opentelemetry/api");
+const { logs, SeverityNumber } = require("@opentelemetry/api-logs");
 
 const app = express();
 app.use(express.json());
 
 const tracer = trace.getTracer("dummy-express-server");
+const logger = logs.getLogger("dummy-express-server");
+
+function log(severity, body, attributes = {}) {
+  logger.emit({ severityNumber: SeverityNumber[severity], severityText: severity, body, attributes });
+}
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -31,10 +37,16 @@ app.get("/orders", async (req, res) => {
   const errorSlot = pickOne(["fetch-orders-from-db"]);
 
   await tracer.startActiveSpan("fetch-orders-from-db", async (span) => {
+    log("INFO", "Fetching orders list");
     await sleep(randomBetween(20, 80));
     span.setAttribute("db.system", "postgresql");
     span.setAttribute("db.statement", "SELECT * FROM orders LIMIT 10");
-    if (errorSlot === "fetch-orders-from-db") errorSpan(span, "Database connection timeout");
+    if (errorSlot === "fetch-orders-from-db") {
+      errorSpan(span, "Database connection timeout");
+      log("ERROR", "Database connection timeout while fetching orders", { "db.system": "postgresql" });
+    } else {
+      log("DEBUG", "Orders query completed", { "db.system": "postgresql", "result.count": "3" });
+    }
     span.end();
   });
 
@@ -46,6 +58,7 @@ app.get("/orders/:id", async (req, res) => {
   const errorSlot = pickOne(["fetch-order", "fetch-order-items"]);
 
   const order = await tracer.startActiveSpan("fetch-order", async (span) => {
+    log("INFO", `Fetching order ${orderId}`, { "order.id": orderId });
     span.setAttribute("order.id", orderId);
     await sleep(randomBetween(10, 50));
 
@@ -53,11 +66,19 @@ app.get("/orders/:id", async (req, res) => {
       childSpan.setAttribute("db.system", "postgresql");
       childSpan.setAttribute("db.statement", `SELECT * FROM order_items WHERE order_id = ${orderId}`);
       await sleep(randomBetween(5, 30));
-      if (errorSlot === "fetch-order-items") errorSpan(childSpan, "Order not found");
+      if (errorSlot === "fetch-order-items") {
+        errorSpan(childSpan, "Order not found");
+        log("WARN", `Order items not found for order ${orderId}`, { "order.id": orderId });
+      }
       childSpan.end();
     });
 
-    if (errorSlot === "fetch-order") errorSpan(span, "Failed to fetch order");
+    if (errorSlot === "fetch-order") {
+      errorSpan(span, "Failed to fetch order");
+      log("ERROR", `Failed to fetch order ${orderId}`, { "order.id": orderId });
+    } else {
+      log("DEBUG", `Order ${orderId} fetched successfully`, { "order.id": orderId });
+    }
     span.end();
     return { id: orderId, items: [{ sku: "ABC-1" }, { sku: "XYZ-2" }] };
   });
@@ -70,19 +91,31 @@ app.post("/orders", async (req, res) => {
 
   const result = await tracer.startActiveSpan("create-order", async (rootSpan) => {
     rootSpan.setAttribute("order.source", "api");
+    log("INFO", "Creating new order", { "order.source": "api" });
 
     await tracer.startActiveSpan("validate-inventory", async (span) => {
       await sleep(randomBetween(15, 40));
       span.setAttribute("inventory.checked", true);
-      if (errorSlot === "validate-inventory") errorSpan(span, "Item out of stock");
+      if (errorSlot === "validate-inventory") {
+        errorSpan(span, "Item out of stock");
+        log("WARN", "Inventory validation failed: item out of stock");
+      } else {
+        log("DEBUG", "Inventory validation passed");
+      }
       span.end();
     });
 
     await tracer.startActiveSpan("charge-payment", async (span) => {
+      const amount = randomBetween(10, 500);
       await sleep(randomBetween(80, 200));
       span.setAttribute("payment.provider", "stripe");
-      span.setAttribute("payment.amount", randomBetween(10, 500));
-      if (errorSlot === "charge-payment") errorSpan(span, "Card declined");
+      span.setAttribute("payment.amount", amount);
+      if (errorSlot === "charge-payment") {
+        errorSpan(span, "Card declined");
+        log("ERROR", "Payment charge failed: card declined", { "payment.provider": "stripe", "payment.amount": String(amount) });
+      } else {
+        log("INFO", "Payment charged successfully", { "payment.provider": "stripe", "payment.amount": String(amount) });
+      }
       span.end();
     });
 
@@ -90,13 +123,21 @@ app.post("/orders", async (req, res) => {
       span.setAttribute("db.system", "postgresql");
       span.setAttribute("db.statement", "INSERT INTO orders ...");
       await sleep(randomBetween(10, 30));
-      if (errorSlot === "save-order-to-db") errorSpan(span, "Deadlock detected");
+      if (errorSlot === "save-order-to-db") {
+        errorSpan(span, "Deadlock detected");
+        log("ERROR", "Failed to save order: deadlock detected", { "db.system": "postgresql" });
+      }
       span.end();
     });
 
-    if (errorSlot === "create-order") errorSpan(rootSpan, "Order creation failed");
+    if (errorSlot === "create-order") {
+      errorSpan(rootSpan, "Order creation failed");
+      log("ERROR", "Order creation failed");
+    }
     rootSpan.end();
-    return { id: randomBetween(100, 999), status: "created" };
+    const orderId = randomBetween(100, 999);
+    log("INFO", `Order ${orderId} created successfully`, { "order.id": String(orderId) });
+    return { id: orderId, status: "created" };
   });
 
   res.status(201).json(result);
@@ -107,12 +148,15 @@ app.get("/users/:id", async (req, res) => {
   const errorSlot = pickOne(["cache-lookup", "fetch-user"]);
 
   await tracer.startActiveSpan("fetch-user", async (span) => {
+    log("INFO", `Fetching user ${userId}`, { "user.id": userId });
     span.setAttribute("user.id", userId);
 
     await tracer.startActiveSpan("cache-lookup", async (cacheSpan) => {
       cacheSpan.setAttribute("cache.backend", "redis");
       await sleep(randomBetween(1, 10));
-      cacheSpan.setAttribute("cache.hit", Math.random() > 0.5);
+      const hit = Math.random() > 0.5;
+      cacheSpan.setAttribute("cache.hit", hit);
+      log("DEBUG", `Cache ${hit ? "hit" : "miss"} for user ${userId}`, { "cache.backend": "redis", "cache.hit": String(hit) });
 
       await tracer.startActiveSpan("redis-get", async (redisSpan) => {
         redisSpan.setAttribute("redis.command", "GET");
@@ -121,12 +165,18 @@ app.get("/users/:id", async (req, res) => {
         redisSpan.end();
       });
 
-      if (errorSlot === "cache-lookup") errorSpan(cacheSpan, "Redis connection refused");
+      if (errorSlot === "cache-lookup") {
+        errorSpan(cacheSpan, "Redis connection refused");
+        log("ERROR", "Redis connection refused during cache lookup", { "cache.backend": "redis" });
+      }
       cacheSpan.end();
     });
 
     await sleep(randomBetween(5, 25));
-    if (errorSlot === "fetch-user") errorSpan(span, "User not found");
+    if (errorSlot === "fetch-user") {
+      errorSpan(span, "User not found");
+      log("WARN", `User ${userId} not found`, { "user.id": userId });
+    }
     span.end();
   });
 

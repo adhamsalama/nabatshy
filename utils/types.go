@@ -151,6 +151,22 @@ type MetricDataPoint struct {
 	ScopeName               string
 }
 
+type LogRecord struct {
+	TimestampUnixNano       int64
+	ObservedTimeUnixNano    int64
+	SeverityText            string
+	SeverityNumber          int32
+	Body                    string
+	TraceID                 string
+	SpanID                  string
+	ServiceName             string
+	AttributesKey           []string
+	AttributesValue         []string
+	ResourceAttributesKey   []string
+	ResourceAttributesValue []string
+	ScopeName               string
+}
+
 type Span struct {
 	TraceID            string
 	SpanID             string

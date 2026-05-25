@@ -10,6 +10,7 @@ import { SearchPage } from './components/SearchPage';
 import { MonitoringPage } from './components/MonitoringPage';
 import { CronPage } from './components/CronPage';
 import { MetricsPage } from './components/MetricsPage';
+import { LogsPage } from './components/LogsPage';
 import logo from '../../docs/assets/logo.png'; // adjust path if needed
 
 function App() {
@@ -120,6 +121,9 @@ function App() {
             <Button disableRipple color="inherit" component={Link} to="/metrics" sx={{ color: 'white', '&:hover': { backgroundColor: 'rgba(255,255,255,0.15)', color: 'white' } }}>
               Metrics
             </Button>
+            <Button disableRipple color="inherit" component={Link} to="/logs" sx={{ color: 'white', '&:hover': { backgroundColor: 'rgba(255,255,255,0.15)', color: 'white' } }}>
+              Logs
+            </Button>
             <IconButton disableRipple color="inherit" onClick={() => setDarkMode(d => { localStorage.setItem('darkMode', String(!d)); return !d; })} sx={{ color: 'white', '&:hover': { backgroundColor: 'rgba(255,255,255,0.15)', color: 'white' } }}>
               {darkMode ? <LightModeIcon /> : <DarkModeIcon />}
             </IconButton>
@@ -134,6 +138,7 @@ function App() {
             <Route path="/monitoring" element={<MonitoringPage />} />
             <Route path="/cron" element={<CronPage />} />
             <Route path="/metrics" element={<MetricsPage />} />
+            <Route path="/logs" element={<LogsPage />} />
           </Routes>
         </Container>
       </Router>

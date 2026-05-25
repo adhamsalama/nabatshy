@@ -1,4 +1,5 @@
 import { Container, Typography, Paper, Box, Chip, Alert, AlertTitle, IconButton, Tooltip } from '@mui/material';
+import SpanLogsPanel from './SpanLogsPanel';
 import ErrorIcon from '@mui/icons-material/Error';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
@@ -199,6 +200,7 @@ export const SpanDetails = ({ span, onAddToSearch, onAddAsColumn }: { span?: Spa
           </Box>
         )}
       </Paper>
+      <SpanLogsPanel spanId={span.SpanID} startTimeNs={span.StartTime} endTimeNs={span.EndTime} />
     </Container>
   );
 };

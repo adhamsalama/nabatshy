@@ -1779,3 +1779,99 @@ func (s *TelemetryService) GetOtelMetricSeries(ctx context.Context, metricName s
 		BucketInterval: intervalSQL,
 	}, nil
 }
+
+type LogRow struct {
+	TimestampUnixNano  int64             `json:"timestamp_unix_nano"`
+	SeverityText       string            `json:"severity_text"`
+	SeverityNumber     int32             `json:"severity_number"`
+	Body               string            `json:"body"`
+	TraceID            string            `json:"trace_id"`
+	SpanID             string            `json:"span_id"`
+	ServiceName        string            `json:"service_name"`
+	ScopeName          string            `json:"scope_name"`
+	Attributes         map[string]string `json:"attributes"`
+	ResourceAttributes map[string]string `json:"resource_attributes"`
+}
+
+func (s *TelemetryService) GetLogs(ctx context.Context, dr DateRange, spanID, service, severity, body string, page, pageSize int) ([]LogRow, error) {
+	var conds []string
+	var args []any
+
+	if spanID != "" {
+		conds = append(conds, "span_id = ?")
+		args = append(args, spanID)
+	} else {
+		conds = append(conds, "timestamp_unix_nano >= ?", "timestamp_unix_nano <= ?")
+		args = append(args, dr.Start.UnixNano(), dr.End.UnixNano())
+	}
+	if service != "" {
+		conds = append(conds, "service_name = ?")
+		args = append(args, service)
+	}
+	if severity != "" {
+		conds = append(conds, "severity_text = ?")
+		args = append(args, severity)
+	}
+	if body != "" {
+		conds = append(conds, "body ILIKE ?")
+		args = append(args, "%"+body+"%")
+	}
+
+	if pageSize <= 0 {
+		pageSize = 50
+	}
+	if page <= 0 {
+		page = 1
+	}
+	offset := (page - 1) * pageSize
+	args = append(args, pageSize, offset)
+
+	query := fmt.Sprintf(`
+		SELECT
+			timestamp_unix_nano, severity_text, severity_number,
+			body, trace_id, span_id, service_name, scope_name,
+			attributes_key, attributes_value,
+			resource_attributes_key, resource_attributes_value
+		FROM log_record
+		WHERE %s
+		ORDER BY timestamp_unix_nano DESC
+		LIMIT ? OFFSET ?
+	`, strings.Join(conds, " AND "))
+
+	rows, err := s.Ch.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query error: %w", err)
+	}
+	defer rows.Close()
+
+	var result []LogRow
+	for rows.Next() {
+		var r LogRow
+		var attrKeys, attrValues, resKeys, resValues utils.StringSlice
+		if err := rows.Scan(
+			&r.TimestampUnixNano, &r.SeverityText, &r.SeverityNumber,
+			&r.Body, &r.TraceID, &r.SpanID, &r.ServiceName, &r.ScopeName,
+			&attrKeys, &attrValues,
+			&resKeys, &resValues,
+		); err != nil {
+			return nil, fmt.Errorf("scan error: %w", err)
+		}
+		r.Attributes = make(map[string]string, len(attrKeys))
+		for i := range attrKeys {
+			if i < len(attrValues) {
+				r.Attributes[attrKeys[i]] = attrValues[i]
+			}
+		}
+		r.ResourceAttributes = make(map[string]string, len(resKeys))
+		for i := range resKeys {
+			if i < len(resValues) {
+				r.ResourceAttributes[resKeys[i]] = resValues[i]
+			}
+		}
+		result = append(result, r)
+	}
+	if result == nil {
+		result = []LogRow{}
+	}
+	return result, rows.Err()
+}

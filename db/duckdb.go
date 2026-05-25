@@ -39,6 +39,21 @@ CREATE TABLE IF NOT EXISTS cron_jobs (
     interval_seconds INTEGER NOT NULL,
     created_at  BIGINT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS log_record (
+    timestamp_unix_nano          BIGINT,
+    observed_time_unix_nano      BIGINT,
+    severity_text                VARCHAR,
+    severity_number              INTEGER,
+    body                         VARCHAR,
+    trace_id                     VARCHAR,
+    span_id                      VARCHAR,
+    service_name                 VARCHAR,
+    attributes_key               VARCHAR[],
+    attributes_value             VARCHAR[],
+    resource_attributes_key      VARCHAR[],
+    resource_attributes_value    VARCHAR[],
+    scope_name                   VARCHAR
+);
 CREATE TABLE IF NOT EXISTS metric_data_point (
     metric_name                   VARCHAR,
     metric_description            VARCHAR,

@@ -11,6 +11,7 @@ import (
 	"nabatshy/utils"
 
 	"github.com/go-chi/chi/v5"
+	collogs "go.opentelemetry.io/proto/otlp/collector/logs/v1"
 	colmetrics "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
 	coltrace "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -22,6 +23,7 @@ type Span = utils.Span
 type TelemetryCollectorController struct {
 	service        TelemetryCollectorService
 	metricsService MetricsService
+	logsService    LogsService
 }
 
 func (c *TelemetryCollectorController) ingestMetricsHTTPRequest(w http.ResponseWriter, r *http.Request) {
@@ -238,9 +240,47 @@ func (c *TelemetryCollectorController) formatOldOTELData(
 	return opts.Unmarshal(normalized, req)
 }
 
+func (c *TelemetryCollectorController) ingestLogsHTTPRequest(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "failed to read body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var req collogs.ExportLogsServiceRequest
+	switch r.Header.Get("Content-Type") {
+	case "application/x-protobuf":
+		if protoErr := proto.Unmarshal(body, &req); protoErr != nil {
+			http.Error(w, "invalid protobuf: "+protoErr.Error(), http.StatusBadRequest)
+			return
+		}
+	case "application/json":
+		if protoErr := protojson.Unmarshal(body, &req); protoErr != nil {
+			http.Error(w, "invalid json: "+protoErr.Error(), http.StatusBadRequest)
+			return
+		}
+	default:
+		http.Error(w, "unsupported content type", http.StatusUnsupportedMediaType)
+		return
+	}
+
+	c.logsService.ingestLogs(&req)
+
+	resp := &collogs.ExportLogsServiceResponse{}
+	out, err := proto.Marshal(resp)
+	if err != nil {
+		http.Error(w, "failed to marshal response", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/x-protobuf")
+	w.WriteHeader(http.StatusOK)
+	w.Write(out)
+}
+
 func (c *TelemetryCollectorController) RegisterRoutes(r chi.Router) {
 	r.Post("/v1/traces", c.ingestTraceHTTPRequest)
 	r.Post("/v1/metrics", c.ingestMetricsHTTPRequest)
+	r.Post("/v1/logs", c.ingestLogsHTTPRequest)
 }
 
 func Run(db *sql.DB) {
@@ -250,9 +290,13 @@ func Run(db *sql.DB) {
 	metricsService := MetricsService{
 		writer: NewMetricWriter(db),
 	}
+	logsService := LogsService{
+		writer: NewLogWriter(db),
+	}
 	telController := TelemetryCollectorController{
 		service:        telService,
 		metricsService: metricsService,
+		logsService:    logsService,
 	}
 
 	r := chi.NewRouter()

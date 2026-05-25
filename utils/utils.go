@@ -206,6 +206,62 @@ func InsertMetricDataPoints(db *sql.DB, ctx context.Context, points []MetricData
 	})
 }
 
+func InsertLogRecords(db *sql.DB, ctx context.Context, logs []LogRecord) error {
+	if len(logs) == 0 {
+		return nil
+	}
+
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("getting conn: %w", err)
+	}
+	defer conn.Close()
+
+	return conn.Raw(func(c any) error {
+		driverConn, ok := c.(driver.Conn)
+		if !ok {
+			return fmt.Errorf("unexpected connection type %T", c)
+		}
+
+		appender, err := duckdb.NewAppenderFromConn(driverConn, "", "log_record")
+		if err != nil {
+			return fmt.Errorf("creating appender: %w", err)
+		}
+
+		for _, l := range logs {
+			attrKeys := l.AttributesKey
+			if attrKeys == nil {
+				attrKeys = []string{}
+			}
+			attrValues := l.AttributesValue
+			if attrValues == nil {
+				attrValues = []string{}
+			}
+			resKeys := l.ResourceAttributesKey
+			if resKeys == nil {
+				resKeys = []string{}
+			}
+			resValues := l.ResourceAttributesValue
+			if resValues == nil {
+				resValues = []string{}
+			}
+
+			if err := appender.AppendRow(
+				l.TimestampUnixNano, l.ObservedTimeUnixNano,
+				l.SeverityText, l.SeverityNumber,
+				l.Body, l.TraceID, l.SpanID, l.ServiceName,
+				attrKeys, attrValues,
+				resKeys, resValues,
+				l.ScopeName,
+			); err != nil {
+				appender.Close()
+				return fmt.Errorf("appending row: %w", err)
+			}
+		}
+		return appender.Close()
+	})
+}
+
 func InsertDenormalizedSpans(db *sql.DB, ctx context.Context, spans []Span) error {
 	if len(spans) == 0 {
 		return nil

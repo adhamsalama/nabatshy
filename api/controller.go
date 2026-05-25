@@ -495,6 +495,29 @@ func (c *TelemetryController) getOtelMetricSeries(w http.ResponseWriter, r *http
 	json.NewEncoder(w).Encode(result)
 }
 
+func (c *TelemetryController) getLogs(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+
+	dr, err := ParseDateRange(q, "start", "end", "time_range")
+	if err != nil {
+		dr = DateRange{Start: time.Now().Add(-time.Hour), End: time.Now()}
+	}
+
+	page, _ := strconv.Atoi(q.Get("page"))
+	pageSize, _ := strconv.Atoi(q.Get("pageSize"))
+
+	rows, err := c.service.GetLogs(r.Context(), dr,
+		q.Get("span_id"), q.Get("service"), q.Get("severity"), q.Get("body"),
+		page, pageSize,
+	)
+	if err != nil {
+		http.Error(w, "failed to fetch logs: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(rows)
+}
+
 func (c *TelemetryController) RegisterRoutes(r chi.Router) {
 	r.Get("/v1/traces/slowest", c.getTopNSlowestTraces)
 	r.Get("/v1/traces/service/{service}", c.getServiceTraces)
@@ -516,5 +539,6 @@ func (c *TelemetryController) RegisterRoutes(r chi.Router) {
 	r.Get("/api/otel-metrics/names", c.getOtelMetricNames)
 	r.Get("/api/otel-metrics/series", c.getOtelMetricSeries)
 	r.Get("/api/otel-metrics", c.getOtelMetrics)
+	r.Get("/api/logs", c.getLogs)
 	r.Get("/debug/query", c.debugQuery)
 }
