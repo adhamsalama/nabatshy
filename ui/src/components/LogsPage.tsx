@@ -7,6 +7,9 @@ import {
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { Link, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip as ReTooltip, ResponsiveContainer, CartesianGrid,
+} from 'recharts';
 import { config } from '../config';
 
 // ─── constants ────────────────────────────────────────────────────────────────
@@ -39,7 +42,27 @@ const SEVERITY_COLORS: Record<string, 'default' | 'error' | 'warning' | 'info' |
   FATAL: 'error',
 };
 
+const SEVERITY_BAR_COLORS: Record<string, string> = {
+  TRACE: '#9e9e9e',
+  DEBUG: '#78909c',
+  INFO:  '#42a5f5',
+  WARN:  '#ffa726',
+  ERROR: '#ef5350',
+  FATAL: '#b71c1c',
+};
+
 // ─── types ────────────────────────────────────────────────────────────────────
+
+interface LogVolumeBucket {
+  bucket_ms: number;
+  severity: string;
+  count: number;
+}
+
+interface ChartBucket {
+  ts: number;
+  [sev: string]: number;
+}
 
 interface LogRow {
   timestamp_unix_nano: number;
@@ -96,6 +119,8 @@ export const LogsPage: React.FC = () => {
   const [logs, setLogs] = useState<LogRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [chartData, setChartData] = useState<ChartBucket[]>([]);
+  const [chartSeverities, setChartSeverities] = useState<string[]>([]);
 
   const silentFetchRef = useRef<(() => void) | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -117,21 +142,37 @@ export const LogsPage: React.FC = () => {
     if (!silent) setLoading(true);
     setError(null);
 
-    const params = new URLSearchParams({
-      start, end,
-      page: String(page + 1),
-      pageSize: String(pageSize),
-    });
-    if (service) params.set('service', service);
-    if (severity) params.set('severity', severity);
-    if (body) params.set('body', body);
+    const baseParams = new URLSearchParams({ start, end });
+    if (service) baseParams.set('service', service);
+    if (severity) baseParams.set('severity', severity);
+    if (body) baseParams.set('body', body);
 
-    fetch(`${config.backendUrl}/api/logs?${params}`)
-      .then(res => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
+    const logParams = new URLSearchParams(baseParams);
+    logParams.set('page', String(page + 1));
+    logParams.set('pageSize', String(pageSize));
+
+    const logsReq = fetch(`${config.backendUrl}/api/logs?${logParams}`)
+      .then(res => { if (!res.ok) throw new Error(`HTTP ${res.status}`); return res.json(); });
+
+    const volReq = fetch(`${config.backendUrl}/api/logs/volume?${baseParams}`)
+      .then(res => res.ok ? res.json() : []);
+
+    Promise.all([logsReq, volReq])
+      .then(([data, volData]: [LogRow[], LogVolumeBucket[]]) => {
+        setLogs(data);
+
+        const bucketMap = new Map<number, ChartBucket>();
+        const sevSet = new Set<string>();
+        for (const b of volData) {
+          sevSet.add(b.severity);
+          const existing = bucketMap.get(b.bucket_ms) ?? { ts: b.bucket_ms };
+          existing[b.severity] = b.count;
+          bucketMap.set(b.bucket_ms, existing);
+        }
+        const sorted = [...bucketMap.values()].sort((a, b) => a.ts - b.ts);
+        setChartData(sorted);
+        setChartSeverities([...sevSet].sort());
       })
-      .then((data: LogRow[]) => setLogs(data))
       .catch(err => setError(err.message))
       .finally(() => { if (!silent) setLoading(false); });
   }, [timePresetIdx, customStart, customEnd, service, severity, body, page, pageSize]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -214,6 +255,34 @@ export const LogsPage: React.FC = () => {
           )}
         </Box>
       </Box>
+
+      {/* ── volume chart ── */}
+      {chartData.length > 0 && (
+        <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+          <ResponsiveContainer width="100%" height={160}>
+            <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis
+                dataKey="ts"
+                tickFormatter={v => new Date(v).toLocaleTimeString()}
+                tick={{ fontSize: 11 }}
+                minTickGap={40}
+              />
+              <YAxis tick={{ fontSize: 11 }} allowDecimals={false} width={36} />
+              <ReTooltip
+                labelFormatter={v => new Date(v).toLocaleString()}
+                formatter={(value: number, name: string) => [value, name]}
+              />
+              {chartSeverities.map(sev => (
+                <Bar key={sev} dataKey={sev} stackId="a"
+                  fill={SEVERITY_BAR_COLORS[sev] ?? '#90a4ae'}
+                  isAnimationActive={false}
+                />
+              ))}
+            </BarChart>
+          </ResponsiveContainer>
+        </Paper>
+      )}
 
       {/* ── table ── */}
       {loading ? (

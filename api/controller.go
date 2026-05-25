@@ -518,6 +518,25 @@ func (c *TelemetryController) getLogs(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(rows)
 }
 
+func (c *TelemetryController) getLogVolume(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+
+	dr, err := ParseDateRange(q, "start", "end", "time_range")
+	if err != nil {
+		dr = DateRange{Start: time.Now().Add(-time.Hour), End: time.Now()}
+	}
+
+	buckets, err := c.service.GetLogVolume(r.Context(), dr,
+		q.Get("service"), q.Get("severity"), q.Get("body"),
+	)
+	if err != nil {
+		http.Error(w, "failed to fetch log volume: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(buckets)
+}
+
 func (c *TelemetryController) RegisterRoutes(r chi.Router) {
 	r.Get("/v1/traces/slowest", c.getTopNSlowestTraces)
 	r.Get("/v1/traces/service/{service}", c.getServiceTraces)
@@ -540,5 +559,6 @@ func (c *TelemetryController) RegisterRoutes(r chi.Router) {
 	r.Get("/api/otel-metrics/series", c.getOtelMetricSeries)
 	r.Get("/api/otel-metrics", c.getOtelMetrics)
 	r.Get("/api/logs", c.getLogs)
+	r.Get("/api/logs/volume", c.getLogVolume)
 	r.Get("/debug/query", c.debugQuery)
 }

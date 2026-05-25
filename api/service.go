@@ -1878,3 +1878,61 @@ func (s *TelemetryService) GetLogs(ctx context.Context, dr DateRange, traceID, s
 	}
 	return result, rows.Err()
 }
+
+type LogVolumeBucket struct {
+	BucketMs int64  `json:"bucket_ms"`
+	Severity string `json:"severity"`
+	Count    int64  `json:"count"`
+}
+
+func (s *TelemetryService) GetLogVolume(ctx context.Context, dr DateRange, service, severity, body string) ([]LogVolumeBucket, error) {
+	interval := GetIntervalFromDateRange(dr)
+
+	var conds []string
+	var args []any
+
+	conds = append(conds, "timestamp_unix_nano >= ?", "timestamp_unix_nano <= ?")
+	args = append(args, dr.Start.UnixNano(), dr.End.UnixNano())
+	if service != "" {
+		conds = append(conds, "service_name = ?")
+		args = append(args, service)
+	}
+	if severity != "" {
+		conds = append(conds, "severity_text = ?")
+		args = append(args, severity)
+	}
+	if body != "" {
+		conds = append(conds, "body ILIKE ?")
+		args = append(args, "%"+body+"%")
+	}
+
+	query := fmt.Sprintf(`
+		SELECT
+			epoch_ms(time_bucket(INTERVAL '%s', to_timestamp(timestamp_unix_nano / 1e9), TIMESTAMPTZ 'epoch')) AS bucket_ms,
+			UPPER(COALESCE(NULLIF(severity_text, ''), 'UNKNOWN')) AS sev,
+			COUNT(*) AS cnt
+		FROM log_record
+		WHERE %s
+		GROUP BY bucket_ms, sev
+		ORDER BY bucket_ms, sev
+	`, interval, strings.Join(conds, " AND "))
+
+	rows, err := s.Ch.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query error: %w", err)
+	}
+	defer rows.Close()
+
+	var result []LogVolumeBucket
+	for rows.Next() {
+		var b LogVolumeBucket
+		if err := rows.Scan(&b.BucketMs, &b.Severity, &b.Count); err != nil {
+			return nil, fmt.Errorf("scan error: %w", err)
+		}
+		result = append(result, b)
+	}
+	if result == nil {
+		result = []LogVolumeBucket{}
+	}
+	return result, rows.Err()
+}
