@@ -106,6 +106,10 @@ export const CronPage: React.FC = () => {
         Cron Jobs
       </Typography>
 
+      <Alert severity="info" sx={{ mb: 3 }}>
+        Cron jobs run SQL queries on a schedule against your local DuckDB store. Use them to implement <strong>data retention policies</strong> — for example, deleting spans older than a certain age to keep storage in check.
+      </Alert>
+
       <Paper sx={{ p: 3, mb: 3 }}>
         <Typography variant="h6" gutterBottom>
           New Cron Job
@@ -117,6 +121,8 @@ export const CronPage: React.FC = () => {
             onChange={(e) => setName(e.target.value)}
             required
             size="small"
+            placeholder="Delete spans older than 1 day"
+            InputLabelProps={{ shrink: true }}
           />
           <TextField
             label="Query"
@@ -126,7 +132,8 @@ export const CronPage: React.FC = () => {
             multiline
             rows={3}
             size="small"
-            placeholder="SELECT 1"
+            placeholder="DELETE FROM denormalized_span WHERE StartTime < now() - INTERVAL 1 DAY"
+            InputLabelProps={{ shrink: true }}
           />
           <TextField
             label="Interval (seconds)"
