@@ -9,8 +9,12 @@ import (
 
 func LoadEnv(path string) {
 	file, err := os.Open(path)
+	if os.IsNotExist(err) {
+		return
+	}
 	if err != nil {
-		log.Fatalf("Error opening .env file: %v", err)
+		log.Printf("Warning: could not open .env file: %v", err)
+		return
 	}
 	defer file.Close()
 
