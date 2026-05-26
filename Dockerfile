@@ -14,7 +14,7 @@ COPY . ./
 COPY --from=ui /app/ui/dist ./ui/dist
 RUN CGO_ENABLED=1 GOOS=linux go build -ldflags="-s -w" -o nabatshy .
 
-FROM gcr.io/distroless/base-debian12
+FROM gcr.io/distroless/cc-debian12
 WORKDIR /app
 COPY --from=backend /app/nabatshy .
 CMD ["./nabatshy"]
