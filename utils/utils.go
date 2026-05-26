@@ -269,70 +269,50 @@ func InsertDenormalizedSpans(db *sql.DB, ctx context.Context, spans []Span) erro
 		return nil
 	}
 
-	conn, err := db.Conn(ctx)
-	if err != nil {
-		return fmt.Errorf("getting conn: %w", err)
+	appender := NewSQLAppender(db, "denormalized_span", len(spans)+1, time.Hour)
+
+	for _, span := range spans {
+		resourceKeys := make([]string, len(span.ResourceAttributes))
+		resourceValues := make([]string, len(span.ResourceAttributes))
+		for i, attr := range span.ResourceAttributes {
+			resourceKeys[i] = attr.Key
+			resourceValues[i] = attr.Value
+		}
+
+		spanAttrs := make(map[string]any, len(span.SpanAttributes))
+		for _, attr := range span.SpanAttributes {
+			spanAttrs[attr.Key] = attr.Value
+		}
+
+		eventTimes := make([]int64, len(span.Events))
+		eventNames := make([]string, len(span.Events))
+		eventAttrKeys := make([][]string, len(span.Events))
+		eventAttrValues := make([][]string, len(span.Events))
+		for i, event := range span.Events {
+			eventTimes[i] = event.TimeUnixNano
+			eventNames[i] = event.Name
+			keys := make([]string, len(event.Attributes))
+			values := make([]string, len(event.Attributes))
+			for j, attr := range event.Attributes {
+				keys[j] = attr.Key
+				values[j] = attr.Value
+			}
+			eventAttrKeys[i] = keys
+			eventAttrValues[i] = values
+		}
+
+		if err := appender.AppendRow(
+			span.TraceID, span.SpanID, span.ParentSpanID, span.Flags, span.Kind, span.Name,
+			span.StartTimeUnixNano, span.EndTimeUnixNano,
+			span.EndTimeUnixNano-span.StartTimeUnixNano,
+			span.ScopeID.String(), span.ScopeName, span.ResourceID.String(), span.ResourceSchemaURL,
+			resourceKeys, resourceValues,
+			spanAttrs,
+			eventTimes, eventNames, eventAttrKeys, eventAttrValues,
+		); err != nil {
+			appender.Close()
+			return fmt.Errorf("appending row: %w", err)
+		}
 	}
-	defer conn.Close()
-
-	return conn.Raw(func(c any) error {
-		driverConn, ok := c.(driver.Conn)
-		if !ok {
-			return fmt.Errorf("unexpected connection type %T", c)
-		}
-
-		appender, err := duckdb.NewAppenderFromConn(driverConn, "", "denormalized_span")
-		if err != nil {
-			return fmt.Errorf("creating appender: %w", err)
-		}
-
-		for _, span := range spans {
-			resourceKeys := make([]string, len(span.ResourceAttributes))
-			resourceValues := make([]string, len(span.ResourceAttributes))
-			for i, attr := range span.ResourceAttributes {
-				resourceKeys[i] = attr.Key
-				resourceValues[i] = attr.Value
-			}
-
-			spanKeys := make([]string, len(span.SpanAttributes))
-			spanValues := make([]string, len(span.SpanAttributes))
-			for i, attr := range span.SpanAttributes {
-				spanKeys[i] = attr.Key
-				spanValues[i] = attr.Value
-			}
-
-			eventTimes := make([]int64, len(span.Events))
-			eventNames := make([]string, len(span.Events))
-			eventAttrKeys := make([][]string, len(span.Events))
-			eventAttrValues := make([][]string, len(span.Events))
-
-			for i, event := range span.Events {
-				eventTimes[i] = event.TimeUnixNano
-				eventNames[i] = event.Name
-
-				keys := make([]string, len(event.Attributes))
-				values := make([]string, len(event.Attributes))
-				for j, attr := range event.Attributes {
-					keys[j] = attr.Key
-					values[j] = attr.Value
-				}
-				eventAttrKeys[i] = keys
-				eventAttrValues[i] = values
-			}
-
-			if err := appender.AppendRow(
-				span.TraceID, span.SpanID, span.ParentSpanID, span.Flags, span.Kind, span.Name,
-				span.StartTimeUnixNano, span.EndTimeUnixNano,
-				span.EndTimeUnixNano-span.StartTimeUnixNano,
-				span.ScopeID.String(), span.ScopeName, span.ResourceID.String(), span.ResourceSchemaURL,
-				resourceKeys, resourceValues,
-				spanKeys, spanValues,
-				eventTimes, eventNames, eventAttrKeys, eventAttrValues,
-			); err != nil {
-				appender.Close()
-				return fmt.Errorf("appending row: %w", err)
-			}
-		}
-		return appender.Close()
-	})
+	return appender.Close()
 }
