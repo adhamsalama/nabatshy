@@ -278,7 +278,7 @@ export const DashboardsPage: React.FC = () => {
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h5" gutterBottom fontWeight={600}>Monitoring</Typography>
+      <Typography variant="h5" gutterBottom fontWeight={600}>Dashboards</Typography>
 
       {/* Toolbar */}
       <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center', mb: 3 }}>
