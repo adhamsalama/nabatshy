@@ -1,12 +1,12 @@
 # Nabatshy
 
-![logo](./docs/assets/logo.png)
+<img src="docs/assets/logo.png" width="130" />
 
 **The observability platform that fits in a single binary.**
 
 Free and open source. Drop in a single executable, point your services at it with OpenTelemetry, and get a full observability UI with traces, metrics, logs, and dashboards. No external database. No infrastructure to manage.
 
-![Traces](./docs/assets/ss-traces.png)
+![Traces](https://raw.githubusercontent.com/adhamsalama/assets/main/nabatshy/ss-traces.png)
 
 ## Why Nabatshy
 
@@ -37,16 +37,16 @@ Your services send telemetry to `http://localhost:4318` using any OpenTelemetry 
 
 ## Screenshots
 
-![Traces](./docs/assets/ss-traces.png)
-![Trace span details](./docs/assets/ss-traces-span.png)
-![Trace timeline with system metrics](./docs/assets/ss-traces-timeline.png)
-![Trace correlated logs](./docs/assets/ss-traces-logs.png)
-![Dashboards](./docs/assets/ss-dashboards.png)
-![Dashboards top 20 slowest traces](./docs/assets/ss-dashboards-slowest.png)
-![Metrics](./docs/assets/ss-metrics.png)
-![Metrics detail](./docs/assets/ss-metrics-detail.png)
-![Logs](./docs/assets/ss-logs.png)
-![Cron](./docs/assets/ss-cron.png)
+![Traces](https://raw.githubusercontent.com/adhamsalama/assets/main/nabatshy/ss-traces.png)
+![Trace span details](https://raw.githubusercontent.com/adhamsalama/assets/main/nabatshy/ss-traces-span.png)
+![Trace timeline with system metrics](https://raw.githubusercontent.com/adhamsalama/assets/main/nabatshy/ss-traces-timeline.png)
+![Trace correlated logs](https://raw.githubusercontent.com/adhamsalama/assets/main/nabatshy/ss-traces-logs.png)
+![Dashboards](https://raw.githubusercontent.com/adhamsalama/assets/main/nabatshy/ss-dashboards.png)
+![Dashboards top 20 slowest traces](https://raw.githubusercontent.com/adhamsalama/assets/main/nabatshy/ss-dashboards-slowest.png)
+![Metrics](https://raw.githubusercontent.com/adhamsalama/assets/main/nabatshy/ss-metrics.png)
+![Metrics detail](https://raw.githubusercontent.com/adhamsalama/assets/main/nabatshy/ss-metrics-detail.png)
+![Logs](https://raw.githubusercontent.com/adhamsalama/assets/main/nabatshy/ss-logs.png)
+![Cron](https://raw.githubusercontent.com/adhamsalama/assets/main/nabatshy/ss-cron.png)
 
 ## Quick Start
 

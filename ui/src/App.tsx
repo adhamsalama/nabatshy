@@ -12,7 +12,7 @@ import { CronPage } from './components/CronPage';
 import { MetricsPage } from './components/MetricsPage';
 import { LogsPage } from './components/LogsPage';
 import { SQLPage } from './components/SQLPage';
-import logo from '../../docs/assets/logo.png'; // adjust path if needed
+import logo from '../../docs/assets/logo.png';
 
 function App() {
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('darkMode') !== 'false');
@@ -106,7 +106,7 @@ function App() {
                 <img
                   src={logo}
                   alt="Logo"
-                  style={{ height: 50, marginRight: 16 }}
+                  style={{ height: 44, marginRight: 16 }}
                 />
               </Typography>
             </Box>
