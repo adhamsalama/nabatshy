@@ -55,6 +55,7 @@ interface SearchResponse {
   results?: SearchResult[];
   page: number;
   pageSize: number;
+  totalCount?: number;
 }
 
 const FilterChipInput = ({ value, onChange, onSearch }: { value: string; onChange: (v: string) => void; onSearch: (q: string) => void }) => {
@@ -488,7 +489,8 @@ export const TracesPage: React.FC = () => {
   const formatTimestamp = (ns: number) => format(new Date(ns / 1e6), 'yyyy-MM-dd HH:mm:ss.SSS');
   const formatDuration = (ms: number) => `${ms.toFixed(2)} ms`;
   const hasResults = (searchResponse?.results?.length ?? 0) > 0;
-  const hasMorePages = hasResults && searchResponse!.results!.length >= pageSize;
+  const totalCount = searchResponse?.totalCount ?? 0;
+  const totalPages = totalCount > 0 ? Math.ceil(totalCount / pageSize) : (hasResults && searchResponse!.results!.length >= pageSize ? page + 1 : page);
 
   return (
     <Box sx={{ p: 3, display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 2 }}>
@@ -666,7 +668,12 @@ export const TracesPage: React.FC = () => {
       {!loading && (searchResponse?.results?.length ?? 0) > 0 && (
         <>
           <Box sx={{ gridColumn: 'span 12' }}>
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+              {searchResponse?.totalCount !== undefined && (
+                <Typography variant="body2" color="text.secondary">
+                  {searchResponse.totalCount.toLocaleString()} {searchResponse.totalCount === 1 ? 'result' : 'results'}
+                </Typography>
+              )}
               <Button size="small" startIcon={<ViewColumnIcon />} onClick={e => {
                 const r = e.currentTarget.getBoundingClientRect();
                 setColumnAnchorPos({ top: r.bottom, left: r.right });
@@ -779,10 +786,20 @@ export const TracesPage: React.FC = () => {
                 ))}
               </Select>
             </FormControl>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
               <Button disabled={page <= 1} onClick={() => handleSearch(page - 1)}>Previous</Button>
-              <Typography>Page {page}</Typography>
-              <Button disabled={!hasMorePages} onClick={() => handleSearch(page + 1)}>Next</Button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter(p => p === 1 || p === totalPages || Math.abs(p - page) <= 2)
+                .reduce<(number | 'ellipsis')[]>((acc, p, i, arr) => {
+                  if (i > 0 && p - (arr[i - 1] as number) > 1) acc.push('ellipsis');
+                  acc.push(p);
+                  return acc;
+                }, [])
+                .map((p, i) => p === 'ellipsis'
+                  ? <Typography key={`e${i}`} sx={{ px: 0.5 }}>…</Typography>
+                  : <Button key={p} variant={p === page ? 'contained' : 'text'} size="small" onClick={() => handleSearch(p as number)} sx={{ minWidth: 36 }}>{p}</Button>
+                )}
+              <Button disabled={page >= totalPages} onClick={() => handleSearch(page + 1)}>Next</Button>
             </Box>
           </Box>
         </>

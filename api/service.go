@@ -124,9 +124,10 @@ type SearchResult struct {
 }
 
 type SearchResponse struct {
-	Results  []SearchResult `json:"results"`
-	Page     int            `json:"page"`
-	PageSize int            `json:"pageSize"`
+	Results    []SearchResult `json:"results"`
+	Page       int            `json:"page"`
+	PageSize   int            `json:"pageSize"`
+	TotalCount uint64         `json:"totalCount"`
 }
 
 type SortOption struct {
@@ -903,6 +904,15 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 		ds = ds.Order(goqu.I("start_time_unix_nano").Desc())
 	}
 
+	countSQL, countArgs, err := base.Select(goqu.L("COUNT(*)")).Where(conds...).ToSQL()
+	if err != nil {
+		return nil, err
+	}
+	var totalCount uint64
+	if err := s.Ch.QueryRowContext(ctx, countSQL, countArgs...).Scan(&totalCount); err != nil {
+		return nil, err
+	}
+
 	ds = ds.Limit(uint(pageSize)).Offset(uint(offset))
 	sqlStr, args, err := ds.ToSQL()
 	if err != nil {
@@ -952,9 +962,10 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 	}
 
 	return &SearchResponse{
-		Results:  results,
-		Page:     page,
-		PageSize: pageSize,
+		Results:    results,
+		Page:       page,
+		PageSize:   pageSize,
+		TotalCount: totalCount,
 	}, rows.Err()
 }
 
@@ -1854,7 +1865,12 @@ type LogRow struct {
 	ResourceAttributes map[string]string `json:"resource_attributes"`
 }
 
-func (s *TelemetryService) GetLogs(ctx context.Context, dr DateRange, traceID, spanID, service, severity, body, sortField, sortDir string, page, pageSize int) ([]LogRow, error) {
+type LogsResponse struct {
+	Rows       []LogRow `json:"rows"`
+	TotalCount uint64   `json:"totalCount"`
+}
+
+func (s *TelemetryService) GetLogs(ctx context.Context, dr DateRange, traceID, spanID, service, severity, body, sortField, sortDir string, page, pageSize int) (*LogsResponse, error) {
 	if pageSize <= 0 {
 		pageSize = 50
 	}
@@ -1881,30 +1897,40 @@ func (s *TelemetryService) GetLogs(ctx context.Context, dr DateRange, traceID, s
 	var query string
 	var args []any
 
+	var countQuery string
+	var countArgs []any
+
 	if body != "" {
 		var outerConds []string
 		args = append(args, body)
+		countArgs = append(countArgs, body)
 		if spanID != "" {
 			outerConds = append(outerConds, "span_id = ?")
 			args = append(args, spanID)
+			countArgs = append(countArgs, spanID)
 		} else if traceID != "" {
 			outerConds = append(outerConds, "trace_id = ?")
 			args = append(args, traceID)
+			countArgs = append(countArgs, traceID)
 		} else {
 			outerConds = append(outerConds, "timestamp_unix_nano >= ?", "timestamp_unix_nano <= ?")
 			args = append(args, dr.Start.UnixNano(), dr.End.UnixNano())
+			countArgs = append(countArgs, dr.Start.UnixNano(), dr.End.UnixNano())
 		}
 		if service != "" {
 			outerConds = append(outerConds, "service_name = ?")
 			args = append(args, service)
+			countArgs = append(countArgs, service)
 		}
 		if severity != "" {
 			outerConds = append(outerConds, "severity_text = ?")
 			args = append(args, severity)
+			countArgs = append(countArgs, severity)
 		}
 		outerConds = append(outerConds, "__score IS NOT NULL")
 		args = append(args, pageSize, offset)
 
+		whereClause := strings.Join(outerConds, " AND ")
 		query = fmt.Sprintf(`
 			SELECT
 				timestamp_unix_nano, severity_text, severity_number,
@@ -1918,29 +1944,41 @@ func (s *TelemetryService) GetLogs(ctx context.Context, dr DateRange, traceID, s
 			WHERE %s
 			ORDER BY %s %s
 			LIMIT ? OFFSET ?
-		`, strings.Join(outerConds, " AND "), orderCol, orderDir)
+		`, whereClause, orderCol, orderDir)
+		countQuery = fmt.Sprintf(`
+			SELECT COUNT(*) FROM (
+				SELECT *, fts_main_log_record.match_bm25(rowid, ?) AS __score
+				FROM log_record
+			) WHERE %s
+		`, whereClause)
 	} else {
 		var conds []string
 		if spanID != "" {
 			conds = append(conds, "span_id = ?")
 			args = append(args, spanID)
+			countArgs = append(countArgs, spanID)
 		} else if traceID != "" {
 			conds = append(conds, "trace_id = ?")
 			args = append(args, traceID)
+			countArgs = append(countArgs, traceID)
 		} else {
 			conds = append(conds, "timestamp_unix_nano >= ?", "timestamp_unix_nano <= ?")
 			args = append(args, dr.Start.UnixNano(), dr.End.UnixNano())
+			countArgs = append(countArgs, dr.Start.UnixNano(), dr.End.UnixNano())
 		}
 		if service != "" {
 			conds = append(conds, "service_name = ?")
 			args = append(args, service)
+			countArgs = append(countArgs, service)
 		}
 		if severity != "" {
 			conds = append(conds, "severity_text = ?")
 			args = append(args, severity)
+			countArgs = append(countArgs, severity)
 		}
 		args = append(args, pageSize, offset)
 
+		whereClause := strings.Join(conds, " AND ")
 		query = fmt.Sprintf(`
 			SELECT
 				timestamp_unix_nano, severity_text, severity_number,
@@ -1951,7 +1989,13 @@ func (s *TelemetryService) GetLogs(ctx context.Context, dr DateRange, traceID, s
 			WHERE %s
 			ORDER BY %s %s
 			LIMIT ? OFFSET ?
-		`, strings.Join(conds, " AND "), orderCol, orderDir)
+		`, whereClause, orderCol, orderDir)
+		countQuery = fmt.Sprintf(`SELECT COUNT(*) FROM log_record WHERE %s`, whereClause)
+	}
+
+	var totalCount uint64
+	if err := s.Ch.QueryRowContext(ctx, countQuery, countArgs...).Scan(&totalCount); err != nil {
+		return nil, fmt.Errorf("count query error: %w", err)
 	}
 
 	rows, err := s.Ch.QueryContext(ctx, query, args...)
@@ -1989,7 +2033,7 @@ func (s *TelemetryService) GetLogs(ctx context.Context, dr DateRange, traceID, s
 	if result == nil {
 		result = []LogRow{}
 	}
-	return result, rows.Err()
+	return &LogsResponse{Rows: result, TotalCount: totalCount}, rows.Err()
 }
 
 type LogVolumeBucket struct {

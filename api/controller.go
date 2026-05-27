@@ -513,7 +513,7 @@ func (c *TelemetryController) getLogs(w http.ResponseWriter, r *http.Request) {
 	page, _ := strconv.Atoi(q.Get("page"))
 	pageSize, _ := strconv.Atoi(q.Get("pageSize"))
 
-	rows, err := c.service.GetLogs(r.Context(), dr,
+	resp, err := c.service.GetLogs(r.Context(), dr,
 		q.Get("trace_id"), q.Get("span_id"), q.Get("service"), q.Get("severity"), q.Get("body"),
 		q.Get("sort"), q.Get("sort_dir"),
 		page, pageSize,
@@ -523,7 +523,7 @@ func (c *TelemetryController) getLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(rows)
+	json.NewEncoder(w).Encode(resp)
 }
 
 func (c *TelemetryController) getLogVolume(w http.ResponseWriter, r *http.Request) {

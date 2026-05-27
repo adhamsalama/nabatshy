@@ -3,7 +3,7 @@ import {
   Box, Typography, CircularProgress, Select, MenuItem, FormControl,
   InputLabel, Button, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Paper, Chip, TextField, Switch,
-  TablePagination, TableSortLabel, Collapse, IconButton,
+  TableSortLabel, Collapse, IconButton,
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
@@ -122,6 +122,7 @@ export const LogsPage: React.FC = () => {
   const [refreshIntervalIdx, setRefreshIntervalIdx] = useState(1);
 
   const [logs, setLogs] = useState<LogRow[]>([]);
+  const [totalCount, setTotalCount] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [chartData, setChartData] = useState<ChartBucket[]>([]);
@@ -169,8 +170,10 @@ export const LogsPage: React.FC = () => {
       .then(res => res.ok ? res.json() : []);
 
     Promise.all([logsReq, volReq])
-      .then(([data, volData]: [LogRow[], LogVolumeBucket[]]) => {
+      .then(([logsResp, volData]: [{ rows: LogRow[]; totalCount: number }, LogVolumeBucket[]]) => {
+        const data = logsResp.rows ?? [];
         setLogs(data);
+        setTotalCount(logsResp.totalCount ?? 0);
         setExpandedRows(new Set());
 
         const bucketMap = new Map<number, ChartBucket>();
@@ -342,6 +345,11 @@ export const LogsPage: React.FC = () => {
         <Typography color="error">{error}</Typography>
       ) : (
         <>
+          {totalCount > 0 && (
+            <Typography variant="body2" color="text.secondary" mb={1}>
+              {totalCount.toLocaleString()} {totalCount === 1 ? 'result' : 'results'}
+            </Typography>
+          )}
           <TableContainer component={Paper}>
             <Table size="small">
               <TableHead>
@@ -439,16 +447,36 @@ export const LogsPage: React.FC = () => {
               </TableBody>
             </Table>
           </TableContainer>
-          <TablePagination
-            component="div"
-            count={-1}
-            page={page}
-            onPageChange={(_, p) => setPage(p)}
-            rowsPerPage={pageSize}
-            onRowsPerPageChange={e => { setPageSize(parseInt(e.target.value)); setPage(0); }}
-            rowsPerPageOptions={[20, 50, 100]}
-            labelDisplayedRows={({ from, to }) => `${from}–${to}`}
-          />
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Typography variant="body2" color="text.secondary">Rows per page:</Typography>
+              <Select size="small" value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(0); }}>
+                {[20, 50, 100].map(n => <MenuItem key={n} value={n}>{n}</MenuItem>)}
+              </Select>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              {(() => {
+                const totalPages = totalCount > 0 ? Math.ceil(totalCount / pageSize) : page + 1;
+                return (
+                  <>
+                    <Button disabled={page === 0} onClick={() => setPage(page - 1)}>Previous</Button>
+                    {Array.from({ length: totalPages }, (_, i) => i + 1)
+                      .filter(p => p === 1 || p === totalPages || Math.abs(p - (page + 1)) <= 2)
+                      .reduce<(number | 'ellipsis')[]>((acc, p, i, arr) => {
+                        if (i > 0 && p - (arr[i - 1] as number) > 1) acc.push('ellipsis');
+                        acc.push(p);
+                        return acc;
+                      }, [])
+                      .map((p, i) => p === 'ellipsis'
+                        ? <Typography key={`e${i}`} sx={{ px: 0.5 }}>…</Typography>
+                        : <Button key={p} variant={p === page + 1 ? 'contained' : 'text'} size="small" onClick={() => setPage((p as number) - 1)} sx={{ minWidth: 36 }}>{p}</Button>
+                      )}
+                    <Button disabled={page + 1 >= totalPages} onClick={() => setPage(page + 1)}>Next</Button>
+                  </>
+                );
+              })()}
+            </Box>
+          </Box>
         </>
       )}
     </Box>
