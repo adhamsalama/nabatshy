@@ -356,21 +356,25 @@ export const TracesPage: React.FC = () => {
       setSearchResponse(searchData);
       setPage(pageNum);
 
-      if (!isSqlMode) {
-        const metricsUrl = new URL(`${config.backendUrl}/api/metrics/search`);
+      const metricsUrl = new URL(`${config.backendUrl}/api/metrics/search`);
+      const chartStart = isSqlMode ? new Date(Date.now() - 5 * 60 * 1000) : resolvedStart!;
+      const chartEnd = isSqlMode ? new Date() : resolvedEnd!;
+      metricsUrl.searchParams.set('start', chartStart.toISOString());
+      metricsUrl.searchParams.set('end', chartEnd.toISOString());
+      if (isSqlMode) {
+        metricsUrl.searchParams.set('sql_filter', sqlFilterValue);
+      } else {
         metricsUrl.searchParams.set('query', effectiveQuery);
-        metricsUrl.searchParams.set('start', resolvedStart!.toISOString());
-        metricsUrl.searchParams.set('end', resolvedEnd!.toISOString());
         metricsUrl.searchParams.set('traceOrSpan', traceOrSpanValue);
+      }
 
-        const metricsResponse = await fetch(metricsUrl.toString());
-        if (metricsResponse.ok) {
-          const metricsData = await metricsResponse.json();
-          setTraceCountSeries(metricsData.TraceCountResults || []);
-        } else {
-          console.error('Failed to fetch metrics:', await metricsResponse.text());
-          setTraceCountSeries([]);
-        }
+      const metricsResponse = await fetch(metricsUrl.toString());
+      if (metricsResponse.ok) {
+        const metricsData = await metricsResponse.json();
+        setTraceCountSeries(metricsData.TraceCountResults || []);
+      } else {
+        console.error('Failed to fetch metrics:', await metricsResponse.text());
+        setTraceCountSeries([]);
       }
     } catch (err) {
       if (!silent) {
@@ -644,12 +648,7 @@ export const TracesPage: React.FC = () => {
           <CircularProgress />
         </Box>
       )}
-      {sqlMode && (
-        <Box sx={{ gridColumn: 'span 12' }}>
-          <Typography variant="body2" color="text.secondary">Charts are not available in SQL mode.</Typography>
-        </Box>
-      )}
-      {!sqlMode && !loading && searchResponse && (
+      {!loading && searchResponse && (
         <Box sx={{ gridColumn: 'span 12' }}>
           <TraceCountChart
             data={traceCountSeries}
