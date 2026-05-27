@@ -3,12 +3,15 @@ import {
   Box, Typography, CircularProgress, Select, MenuItem, FormControl,
   InputLabel, Button, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Paper, Chip, TextField, Switch,
-  TableSortLabel, Collapse, IconButton,
+  TableSortLabel, Collapse, IconButton, Drawer,
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
-import { Link, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
+import CloseIcon from '@mui/icons-material/Close';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import { TraceDetails } from './TraceDetails';
+import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip as ReTooltip, ResponsiveContainer, CartesianGrid, ReferenceArea,
 } from 'recharts';
@@ -123,6 +126,8 @@ export const LogsPage: React.FC = () => {
 
   const [logs, setLogs] = useState<LogRow[]>([]);
   const [totalCount, setTotalCount] = useState<number>(0);
+  const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
+  const [selectedSpanId, setSelectedSpanId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [chartData, setChartData] = useState<ChartBucket[]>([]);
@@ -405,25 +410,20 @@ export const LogsPage: React.FC = () => {
                         </TableCell>
                         <TableCell sx={{ fontFamily: 'monospace', fontSize: 11 }}>
                           {log.trace_id ? (
-                            <Link
-                              to={`/traces/${log.trace_id}`}
-                              onClick={e => e.stopPropagation()}
-                              style={{ color: 'inherit', textDecoration: 'none' }}
+                            <Box
+                              component="span"
+                              onClick={e => { e.stopPropagation(); setSelectedTraceId(log.trace_id); setSelectedSpanId(log.span_id || null); }}
+                              sx={{
+                                display: 'inline-flex', alignItems: 'center', gap: 0.5, cursor: 'pointer',
+                                '& .label': { display: 'inline' },
+                                '& .open': { display: 'none', fontSize: 11, fontFamily: 'sans-serif', color: 'primary.main' },
+                                '&:hover .label': { display: 'none' },
+                                '&:hover .open': { display: 'inline' },
+                              }}
                             >
-                              <Box
-                                component="span"
-                                sx={{
-                                  display: 'inline-flex', alignItems: 'center', gap: 0.5,
-                                  '& .label': { display: 'inline' },
-                                  '& .open': { display: 'none', fontSize: 11, fontFamily: 'sans-serif', color: 'primary.main' },
-                                  '&:hover .label': { display: 'none' },
-                                  '&:hover .open': { display: 'inline' },
-                                }}
-                              >
-                                <span className="label">{log.trace_id.slice(0, 16)}…</span>
-                                <span className="open">Open trace ↗</span>
-                              </Box>
-                            </Link>
+                              <span className="label">{log.trace_id.slice(0, 16)}…</span>
+                              <span className="open">Open trace →</span>
+                            </Box>
                           ) : '—'}
                         </TableCell>
                         <TableCell sx={{ fontFamily: 'monospace', fontSize: 11 }}>
@@ -479,6 +479,37 @@ export const LogsPage: React.FC = () => {
           </Box>
         </>
       )}
+
+      <Drawer
+        anchor="right"
+        open={selectedTraceId !== null}
+        onClose={() => { setSelectedTraceId(null); setSelectedSpanId(null); }}
+        PaperProps={{ sx: { width: '80vw', display: 'flex', flexDirection: 'column' } }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 2, py: 1, borderBottom: 1, borderColor: 'divider', flexShrink: 0 }}>
+          <Typography variant="subtitle1" sx={{ fontFamily: 'monospace', fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {selectedTraceId}
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1, flexShrink: 0 }}>
+            <Button size="small" startIcon={<OpenInNewIcon />} onClick={() => window.open(`/traces/${encodeURIComponent(selectedTraceId ?? '')}`, '_blank')}>
+              Open in new tab
+            </Button>
+            <IconButton size="small" onClick={() => { setSelectedTraceId(null); setSelectedSpanId(null); }}>
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </Box>
+        <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
+          {selectedTraceId && (
+            <TraceDetails
+              traceId={selectedTraceId}
+              initialSpanId={selectedSpanId ?? undefined}
+              onAddToSearch={() => {}}
+              onAddAsColumn={() => {}}
+            />
+          )}
+        </Box>
+      </Drawer>
     </Box>
   );
 };
