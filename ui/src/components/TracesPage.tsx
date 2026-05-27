@@ -60,24 +60,37 @@ interface SearchResponse {
 
 const FilterChipInput = ({ value, onChange, onSearch }: { value: string; onChange: (v: string) => void; onSearch: (q: string) => void }) => {
   const [inputValue, setInputValue] = useState('');
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const chips = value.split(',').map(p => p.trim()).filter(Boolean);
 
   const commit = (andSearch = false) => {
     const trimmed = inputValue.trim().replace(/,$/, '');
-    if (!trimmed) { if (andSearch) onSearch(value); return; }
-    const newChips = [...chips, trimmed];
+    if (!trimmed) {
+      setEditingIdx(null);
+      if (andSearch) onSearch(value);
+      return;
+    }
+    const newChips = editingIdx !== null
+      ? chips.map((c, i) => i === editingIdx ? trimmed : c)
+      : [...chips, trimmed];
     const newQuery = newChips.join(',');
     onChange(newQuery);
     setInputValue('');
+    setEditingIdx(null);
     if (andSearch) onSearch(newQuery);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') { commit(true); return; }
     if (e.key === ',') { e.preventDefault(); commit(true); return; }
-    if (e.key === 'Backspace' && inputValue === '' && chips.length > 0) {
+    if (e.key === 'Escape' && editingIdx !== null) {
+      setInputValue('');
+      setEditingIdx(null);
+      return;
+    }
+    if (e.key === 'Backspace' && inputValue === '' && chips.length > 0 && editingIdx === null) {
       const newChips = chips.slice(0, -1);
       const newQuery = newChips.join(',');
       onChange(newQuery);
@@ -86,10 +99,17 @@ const FilterChipInput = ({ value, onChange, onSearch }: { value: string; onChang
   };
 
   const removeChip = (idx: number) => {
+    if (editingIdx === idx) { setInputValue(''); setEditingIdx(null); }
     const newChips = chips.filter((_, i) => i !== idx);
     const newQuery = newChips.join(',');
     onChange(newQuery);
     onSearch(newQuery);
+  };
+
+  const startEdit = (idx: number) => {
+    setInputValue(chips[idx]);
+    setEditingIdx(idx);
+    setTimeout(() => inputRef.current?.focus(), 0);
   };
 
   return (
@@ -103,7 +123,9 @@ const FilterChipInput = ({ value, onChange, onSearch }: { value: string; onChang
       }}
     >
       {chips.map((chip, i) => (
-        <Chip key={i} label={chip} size="small" onDelete={() => removeChip(i)} sx={{ fontFamily: 'monospace', fontSize: 12 }} />
+        editingIdx === i
+          ? <Chip key={i} label={chip} size="small" color="primary" variant="outlined" onDelete={() => removeChip(i)} sx={{ fontFamily: 'monospace', fontSize: 12 }} />
+          : <Chip key={i} label={chip} size="small" onClick={e => { e.stopPropagation(); startEdit(i); }} onDelete={() => removeChip(i)} sx={{ fontFamily: 'monospace', fontSize: 12, cursor: 'pointer' }} />
       ))}
       <Box
         component="input"
