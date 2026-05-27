@@ -755,7 +755,7 @@ func parseAttributeQuery(query string) []AttributeQuery {
 	return nil
 }
 
-func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange, query string, page, pageSize int, sort SortOption, traceOrSpan string) (*SearchResponse, error) {
+func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange, query, sqlFilter string, page, pageSize int, sort SortOption, traceOrSpan string) (*SearchResponse, error) {
 	totalStart := time.Now()
 	defer func() {
 		fmt.Printf("[SearchTraces] Total function time: %v\n", time.Since(totalStart))
@@ -766,12 +766,17 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 
 	base := s.DB.From(goqu.T("denormalized_span"))
 
-	conds := []goqu.Expression{
-		goqu.I("start_time_unix_nano").Gte(startNano),
-		goqu.I("end_time_unix_nano").Lte(endNano),
+	var conds []goqu.Expression
+	if sqlFilter != "" {
+		conds = append(conds, goqu.L(sqlFilter))
+	} else {
+		conds = append(conds,
+			goqu.I("start_time_unix_nano").Gte(startNano),
+			goqu.I("end_time_unix_nano").Lte(endNano),
+		)
 	}
 
-	if query != "" {
+	if sqlFilter == "" && query != "" {
 		if attrs := parseAttributeQuery(query); attrs != nil {
 			var attrConds []goqu.Expression
 			for _, attr := range attrs {
@@ -1430,18 +1435,23 @@ func (s *TelemetryService) getCombinedMetricsForQuery(
 	}, nil
 }
 
-func (s *TelemetryService) GetSearchMetrics(ctx context.Context, dateRange DateRange, query string, percentile int, traceOrSpan string) (*CombinedMetricsResult, error) {
+func (s *TelemetryService) GetSearchMetrics(ctx context.Context, dateRange DateRange, query, sqlFilter string, percentile int, traceOrSpan string) (*CombinedMetricsResult, error) {
 	startNano := dateRange.Start.UnixNano()
 	endNano := dateRange.End.UnixNano()
 
 	base := s.DB.From(goqu.T("denormalized_span"))
 
-	conds := []goqu.Expression{
-		goqu.I("start_time_unix_nano").Gte(startNano),
-		goqu.I("end_time_unix_nano").Lte(endNano),
+	var conds []goqu.Expression
+	if sqlFilter != "" {
+		conds = append(conds, goqu.L(sqlFilter))
+	} else {
+		conds = append(conds,
+			goqu.I("start_time_unix_nano").Gte(startNano),
+			goqu.I("end_time_unix_nano").Lte(endNano),
+		)
 	}
 
-	if query != "" {
+	if sqlFilter == "" && query != "" {
 		if attrs := parseAttributeQuery(query); attrs != nil {
 			var attrConds []goqu.Expression
 			for _, attr := range attrs {
