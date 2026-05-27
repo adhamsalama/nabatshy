@@ -144,27 +144,23 @@ type MetricDataPoint struct {
 	HistogramMax            float64
 	HistogramBucketCounts   []int64
 	HistogramExplicitBounds []float64
-	AttributesKey           []string
-	AttributesValue         []string
-	ResourceAttributesKey   []string
-	ResourceAttributesValue []string
+	Attributes              map[string]any
+	ResourceAttributes      map[string]any
 	ScopeName               string
 }
 
 type LogRecord struct {
-	TimestampUnixNano       int64
-	ObservedTimeUnixNano    int64
-	SeverityText            string
-	SeverityNumber          int32
-	Body                    string
-	TraceID                 string
-	SpanID                  string
-	ServiceName             string
-	AttributesKey           []string
-	AttributesValue         []string
-	ResourceAttributesKey   []string
-	ResourceAttributesValue []string
-	ScopeName               string
+	TimestampUnixNano    int64
+	ObservedTimeUnixNano int64
+	SeverityText         string
+	SeverityNumber       int32
+	Body                 string
+	TraceID              string
+	SpanID               string
+	ServiceName          string
+	Attributes           map[string]any
+	ResourceAttributes   map[string]any
+	ScopeName            string
 }
 
 type Span struct {

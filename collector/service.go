@@ -253,3 +253,11 @@ func isSimpleStringArray(values []*commonpb.AnyValue) bool {
 func encodeBytes(b []byte) string {
 	return base64.StdEncoding.EncodeToString(b)
 }
+
+func toAnyMap(m map[string]string) map[string]any {
+	result := make(map[string]any, len(m))
+	for k, v := range m {
+		result[k] = v
+	}
+	return result
+}

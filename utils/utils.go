@@ -3,14 +3,11 @@ package utils
 import (
 	"context"
 	"database/sql"
-	"database/sql/driver"
 	"fmt"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
-
-	duckdb "github.com/duckdb/duckdb-go/v2"
 )
 
 func PadQueryResult(rows *sql.Rows, intervalSQL string, dateRange DateRange) ([]TimePercentile, error) {
@@ -145,123 +142,67 @@ func InsertMetricDataPoints(db *sql.DB, ctx context.Context, points []MetricData
 	if len(points) == 0 {
 		return nil
 	}
-
-	conn, err := db.Conn(ctx)
-	if err != nil {
-		return fmt.Errorf("getting conn: %w", err)
+	appender := NewSQLAppender(db, "metric_data_point", len(points)+1, time.Hour)
+	for _, p := range points {
+		bucketCounts := p.HistogramBucketCounts
+		if bucketCounts == nil {
+			bucketCounts = []int64{}
+		}
+		explicitBounds := p.HistogramExplicitBounds
+		if explicitBounds == nil {
+			explicitBounds = []float64{}
+		}
+		attrs := p.Attributes
+		if attrs == nil {
+			attrs = map[string]any{}
+		}
+		resAttrs := p.ResourceAttributes
+		if resAttrs == nil {
+			resAttrs = map[string]any{}
+		}
+		if err := appender.AppendRow(
+			p.MetricName, p.MetricDescription, p.MetricUnit, p.MetricType,
+			p.TimeUnixNano, p.StartTimeUnixNano,
+			p.ValueDouble, p.ValueInt,
+			p.AggregationTemporality, p.IsMonotonic,
+			p.HistogramCount, p.HistogramSum, p.HistogramMin, p.HistogramMax,
+			bucketCounts, explicitBounds,
+			attrs, resAttrs,
+			p.ScopeName,
+		); err != nil {
+			appender.Close()
+			return fmt.Errorf("appending row: %w", err)
+		}
 	}
-	defer conn.Close()
-
-	return conn.Raw(func(c any) error {
-		driverConn, ok := c.(driver.Conn)
-		if !ok {
-			return fmt.Errorf("unexpected connection type %T", c)
-		}
-
-		appender, err := duckdb.NewAppenderFromConn(driverConn, "", "metric_data_point")
-		if err != nil {
-			return fmt.Errorf("creating appender: %w", err)
-		}
-
-		for _, p := range points {
-			bucketCounts := p.HistogramBucketCounts
-			if bucketCounts == nil {
-				bucketCounts = []int64{}
-			}
-			explicitBounds := p.HistogramExplicitBounds
-			if explicitBounds == nil {
-				explicitBounds = []float64{}
-			}
-			attrKeys := p.AttributesKey
-			if attrKeys == nil {
-				attrKeys = []string{}
-			}
-			attrValues := p.AttributesValue
-			if attrValues == nil {
-				attrValues = []string{}
-			}
-			resKeys := p.ResourceAttributesKey
-			if resKeys == nil {
-				resKeys = []string{}
-			}
-			resValues := p.ResourceAttributesValue
-			if resValues == nil {
-				resValues = []string{}
-			}
-
-			if err := appender.AppendRow(
-				p.MetricName, p.MetricDescription, p.MetricUnit, p.MetricType,
-				p.TimeUnixNano, p.StartTimeUnixNano,
-				p.ValueDouble, p.ValueInt,
-				p.AggregationTemporality, p.IsMonotonic,
-				p.HistogramCount, p.HistogramSum, p.HistogramMin, p.HistogramMax,
-				bucketCounts, explicitBounds,
-				attrKeys, attrValues,
-				resKeys, resValues,
-				p.ScopeName,
-			); err != nil {
-				appender.Close()
-				return fmt.Errorf("appending row: %w", err)
-			}
-		}
-		return appender.Close()
-	})
+	return appender.Close()
 }
 
 func InsertLogRecords(db *sql.DB, ctx context.Context, logs []LogRecord) error {
 	if len(logs) == 0 {
 		return nil
 	}
-
-	conn, err := db.Conn(ctx)
-	if err != nil {
-		return fmt.Errorf("getting conn: %w", err)
+	appender := NewSQLAppender(db, "log_record", len(logs)+1, time.Hour)
+	for _, l := range logs {
+		attrs := l.Attributes
+		if attrs == nil {
+			attrs = map[string]any{}
+		}
+		resAttrs := l.ResourceAttributes
+		if resAttrs == nil {
+			resAttrs = map[string]any{}
+		}
+		if err := appender.AppendRow(
+			l.TimestampUnixNano, l.ObservedTimeUnixNano,
+			l.SeverityText, l.SeverityNumber,
+			l.Body, l.TraceID, l.SpanID, l.ServiceName,
+			attrs, resAttrs,
+			l.ScopeName,
+		); err != nil {
+			appender.Close()
+			return fmt.Errorf("appending row: %w", err)
+		}
 	}
-	defer conn.Close()
-
-	return conn.Raw(func(c any) error {
-		driverConn, ok := c.(driver.Conn)
-		if !ok {
-			return fmt.Errorf("unexpected connection type %T", c)
-		}
-
-		appender, err := duckdb.NewAppenderFromConn(driverConn, "", "log_record")
-		if err != nil {
-			return fmt.Errorf("creating appender: %w", err)
-		}
-
-		for _, l := range logs {
-			attrKeys := l.AttributesKey
-			if attrKeys == nil {
-				attrKeys = []string{}
-			}
-			attrValues := l.AttributesValue
-			if attrValues == nil {
-				attrValues = []string{}
-			}
-			resKeys := l.ResourceAttributesKey
-			if resKeys == nil {
-				resKeys = []string{}
-			}
-			resValues := l.ResourceAttributesValue
-			if resValues == nil {
-				resValues = []string{}
-			}
-
-			if err := appender.AppendRow(
-				l.TimestampUnixNano, l.ObservedTimeUnixNano,
-				l.SeverityText, l.SeverityNumber,
-				l.Body, l.TraceID, l.SpanID, l.ServiceName,
-				attrKeys, attrValues,
-				resKeys, resValues,
-				l.ScopeName,
-			); err != nil {
-				appender.Close()
-				return fmt.Errorf("appending row: %w", err)
-			}
-		}
-		return appender.Close()
-	})
+	return appender.Close()
 }
 
 func InsertDenormalizedSpans(db *sql.DB, ctx context.Context, spans []Span) error {
@@ -269,70 +210,44 @@ func InsertDenormalizedSpans(db *sql.DB, ctx context.Context, spans []Span) erro
 		return nil
 	}
 
-	conn, err := db.Conn(ctx)
-	if err != nil {
-		return fmt.Errorf("getting conn: %w", err)
+	appender := NewSQLAppender(db, "denormalized_span", len(spans)+1, time.Hour)
+
+	for _, span := range spans {
+		resourceAttrs := make(map[string]any, len(span.ResourceAttributes))
+		for _, attr := range span.ResourceAttributes {
+			resourceAttrs[attr.Key] = attr.Value
+		}
+
+		spanAttrs := make(map[string]any, len(span.SpanAttributes))
+		for _, attr := range span.SpanAttributes {
+			spanAttrs[attr.Key] = attr.Value
+		}
+
+		eventTimes := make([]int64, len(span.Events))
+		eventNames := make([]string, len(span.Events))
+		eventAttrs := make([]map[string]any, len(span.Events))
+		for i, event := range span.Events {
+			eventTimes[i] = event.TimeUnixNano
+			eventNames[i] = event.Name
+			m := make(map[string]any, len(event.Attributes))
+			for _, attr := range event.Attributes {
+				m[attr.Key] = attr.Value
+			}
+			eventAttrs[i] = m
+		}
+
+		if err := appender.AppendRow(
+			span.TraceID, span.SpanID, span.ParentSpanID, span.Flags, span.Kind, span.Name,
+			span.StartTimeUnixNano, span.EndTimeUnixNano,
+			span.EndTimeUnixNano-span.StartTimeUnixNano,
+			span.ScopeID.String(), span.ScopeName, span.ResourceID.String(), span.ResourceSchemaURL,
+			resourceAttrs,
+			spanAttrs,
+			eventTimes, eventNames, eventAttrs,
+		); err != nil {
+			appender.Close()
+			return fmt.Errorf("appending row: %w", err)
+		}
 	}
-	defer conn.Close()
-
-	return conn.Raw(func(c any) error {
-		driverConn, ok := c.(driver.Conn)
-		if !ok {
-			return fmt.Errorf("unexpected connection type %T", c)
-		}
-
-		appender, err := duckdb.NewAppenderFromConn(driverConn, "", "denormalized_span")
-		if err != nil {
-			return fmt.Errorf("creating appender: %w", err)
-		}
-
-		for _, span := range spans {
-			resourceKeys := make([]string, len(span.ResourceAttributes))
-			resourceValues := make([]string, len(span.ResourceAttributes))
-			for i, attr := range span.ResourceAttributes {
-				resourceKeys[i] = attr.Key
-				resourceValues[i] = attr.Value
-			}
-
-			spanKeys := make([]string, len(span.SpanAttributes))
-			spanValues := make([]string, len(span.SpanAttributes))
-			for i, attr := range span.SpanAttributes {
-				spanKeys[i] = attr.Key
-				spanValues[i] = attr.Value
-			}
-
-			eventTimes := make([]int64, len(span.Events))
-			eventNames := make([]string, len(span.Events))
-			eventAttrKeys := make([][]string, len(span.Events))
-			eventAttrValues := make([][]string, len(span.Events))
-
-			for i, event := range span.Events {
-				eventTimes[i] = event.TimeUnixNano
-				eventNames[i] = event.Name
-
-				keys := make([]string, len(event.Attributes))
-				values := make([]string, len(event.Attributes))
-				for j, attr := range event.Attributes {
-					keys[j] = attr.Key
-					values[j] = attr.Value
-				}
-				eventAttrKeys[i] = keys
-				eventAttrValues[i] = values
-			}
-
-			if err := appender.AppendRow(
-				span.TraceID, span.SpanID, span.ParentSpanID, span.Flags, span.Kind, span.Name,
-				span.StartTimeUnixNano, span.EndTimeUnixNano,
-				span.EndTimeUnixNano-span.StartTimeUnixNano,
-				span.ScopeID.String(), span.ScopeName, span.ResourceID.String(), span.ResourceSchemaURL,
-				resourceKeys, resourceValues,
-				spanKeys, spanValues,
-				eventTimes, eventNames, eventAttrKeys, eventAttrValues,
-			); err != nil {
-				appender.Close()
-				return fmt.Errorf("appending row: %w", err)
-			}
-		}
-		return appender.Close()
-	})
+	return appender.Close()
 }
