@@ -1,12 +1,15 @@
 package db
 
 import (
+	"context"
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 
-	_ "github.com/duckdb/duckdb-go/v2"
+	duckdb "github.com/duckdb/duckdb-go/v2"
 )
 
 const createTable = `
@@ -79,20 +82,46 @@ CREATE TABLE IF NOT EXISTS metric_data_point (
 );`
 
 func InitDuckDB(inMemory bool) *sql.DB {
-	path := os.Getenv("DUCKDB_PATH")
-	if path == "" {
-		path = "nabatshy.db"
-	}
+	var db *sql.DB
+
 	if inMemory {
-		path = ""
 		log.Println("[duckdb] mode: in-memory (no persistence)")
+		var err error
+		db, err = sql.Open("duckdb", "")
+		if err != nil {
+			panic(fmt.Sprintf("opening duckdb: %v", err))
+		}
 	} else {
+		path := os.Getenv("DUCKDB_PATH")
+		if path == "" {
+			path = "nabatshy.db"
+		}
 		log.Printf("[duckdb] mode: persistent (%s)\n", path)
+
+		absPath, err := filepath.Abs(path)
+		if err != nil {
+			panic(fmt.Sprintf("resolving db path: %v", err))
+		}
+
+		// Open an in-memory session and ATTACH the file with STORAGE_VERSION
+		// 'v1.5.0'. For new databases this creates them at the required storage
+		// version so VARIANT columns are supported. For existing databases the
+		// STORAGE_VERSION option is silently ignored by DuckDB and the database
+		// opens at its current storage version. The init func runs on every new
+		// connection in the pool, ensuring all connections use the right database.
+		connector, err := duckdb.NewConnector("", func(execer driver.ExecerContext) error {
+			_, err := execer.ExecContext(context.Background(),
+				fmt.Sprintf("ATTACH IF NOT EXISTS '%s' AS nabatshy (STORAGE_VERSION 'v1.5.0'); USE nabatshy", absPath),
+				nil,
+			)
+			return err
+		})
+		if err != nil {
+			panic(fmt.Sprintf("opening duckdb connector: %v", err))
+		}
+		db = sql.OpenDB(connector)
 	}
-	db, err := sql.Open("duckdb", path)
-	if err != nil {
-		panic(fmt.Sprintf("opening duckdb: %v", err))
-	}
+
 	if _, err := db.Exec(createTable); err != nil {
 		panic(fmt.Sprintf("creating schema: %v", err))
 	}
