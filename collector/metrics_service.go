@@ -13,8 +13,7 @@ type MetricsService struct {
 
 func (s *MetricsService) ingestMetrics(req *colmetrics.ExportMetricsServiceRequest) {
 	for _, rm := range req.ResourceMetrics {
-		resourceAttrs := extractAttributes(rm.Resource.GetAttributes())
-		resKeys, resValues := attrMapToSlices(resourceAttrs)
+		resAttrs := toAnyMap(extractAttributes(rm.Resource.GetAttributes()))
 
 		for _, sm := range rm.ScopeMetrics {
 			scopeName := sm.Scope.GetName()
@@ -24,19 +23,19 @@ func (s *MetricsService) ingestMetrics(req *colmetrics.ExportMetricsServiceReque
 				switch data := metric.Data.(type) {
 				case *metricspb.Metric_Gauge:
 					for _, dp := range data.Gauge.DataPoints {
-						p := numberDataPoint(metric, "gauge", "", false, dp, resKeys, resValues, scopeName)
+						p := numberDataPoint(metric, "gauge", "", false, dp, resAttrs, scopeName)
 						points = append(points, p)
 					}
 				case *metricspb.Metric_Sum:
 					temporality := data.Sum.AggregationTemporality.String()
 					for _, dp := range data.Sum.DataPoints {
-						p := numberDataPoint(metric, "sum", temporality, data.Sum.IsMonotonic, dp, resKeys, resValues, scopeName)
+						p := numberDataPoint(metric, "sum", temporality, data.Sum.IsMonotonic, dp, resAttrs, scopeName)
 						points = append(points, p)
 					}
 				case *metricspb.Metric_Histogram:
 					temporality := data.Histogram.AggregationTemporality.String()
 					for _, dp := range data.Histogram.DataPoints {
-						p := histogramDataPoint(metric, temporality, dp, resKeys, resValues, scopeName)
+						p := histogramDataPoint(metric, temporality, dp, resAttrs, scopeName)
 						points = append(points, p)
 					}
 				}
@@ -54,24 +53,21 @@ func numberDataPoint(
 	metricType, temporality string,
 	isMonotonic bool,
 	dp *metricspb.NumberDataPoint,
-	resKeys, resValues []string,
+	resAttrs map[string]any,
 	scopeName string,
 ) utils.MetricDataPoint {
-	attrKeys, attrValues := attrMapToSlices(extractAttributes(dp.Attributes))
 	p := utils.MetricDataPoint{
-		MetricName:              metric.Name,
-		MetricDescription:       metric.Description,
-		MetricUnit:              metric.Unit,
-		MetricType:              metricType,
-		TimeUnixNano:            int64(dp.TimeUnixNano),
-		StartTimeUnixNano:       int64(dp.StartTimeUnixNano),
-		AggregationTemporality:  temporality,
-		IsMonotonic:             isMonotonic,
-		AttributesKey:           attrKeys,
-		AttributesValue:         attrValues,
-		ResourceAttributesKey:   resKeys,
-		ResourceAttributesValue: resValues,
-		ScopeName:               scopeName,
+		MetricName:             metric.Name,
+		MetricDescription:      metric.Description,
+		MetricUnit:             metric.Unit,
+		MetricType:             metricType,
+		TimeUnixNano:           int64(dp.TimeUnixNano),
+		StartTimeUnixNano:      int64(dp.StartTimeUnixNano),
+		AggregationTemporality: temporality,
+		IsMonotonic:            isMonotonic,
+		Attributes:             toAnyMap(extractAttributes(dp.Attributes)),
+		ResourceAttributes:     resAttrs,
+		ScopeName:              scopeName,
 	}
 	switch v := dp.Value.(type) {
 	case *metricspb.NumberDataPoint_AsDouble:
@@ -86,11 +82,9 @@ func histogramDataPoint(
 	metric *metricspb.Metric,
 	temporality string,
 	dp *metricspb.HistogramDataPoint,
-	resKeys, resValues []string,
+	resAttrs map[string]any,
 	scopeName string,
 ) utils.MetricDataPoint {
-	attrKeys, attrValues := attrMapToSlices(extractAttributes(dp.Attributes))
-
 	bucketCounts := make([]int64, len(dp.BucketCounts))
 	for i, c := range dp.BucketCounts {
 		bucketCounts[i] = int64(c)
@@ -121,21 +115,9 @@ func histogramDataPoint(
 		HistogramMax:            histMax,
 		HistogramBucketCounts:   bucketCounts,
 		HistogramExplicitBounds: dp.ExplicitBounds,
-		AttributesKey:           attrKeys,
-		AttributesValue:         attrValues,
-		ResourceAttributesKey:   resKeys,
-		ResourceAttributesValue: resValues,
+		Attributes:              toAnyMap(extractAttributes(dp.Attributes)),
+		ResourceAttributes:      resAttrs,
 		ScopeName:               scopeName,
 	}
-}
-
-func attrMapToSlices(m map[string]string) ([]string, []string) {
-	keys := make([]string, 0, len(m))
-	values := make([]string, 0, len(m))
-	for k, v := range m {
-		keys = append(keys, k)
-		values = append(values, v)
-	}
-	return keys, values
 }
 

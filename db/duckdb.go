@@ -49,10 +49,8 @@ CREATE TABLE IF NOT EXISTS log_record (
     trace_id                     VARCHAR,
     span_id                      VARCHAR,
     service_name                 VARCHAR,
-    attributes_key               VARCHAR[],
-    attributes_value             VARCHAR[],
-    resource_attributes_key      VARCHAR[],
-    resource_attributes_value    VARCHAR[],
+    attributes                   MAP(VARCHAR, VARIANT),
+    resource_attributes          MAP(VARCHAR, VARIANT),
     scope_name                   VARCHAR
 );
 CREATE TABLE IF NOT EXISTS metric_data_point (
@@ -72,10 +70,8 @@ CREATE TABLE IF NOT EXISTS metric_data_point (
     histogram_max                 DOUBLE,
     histogram_bucket_counts       BIGINT[],
     histogram_explicit_bounds     DOUBLE[],
-    attributes_key                VARCHAR[],
-    attributes_value              VARCHAR[],
-    resource_attributes_key       VARCHAR[],
-    resource_attributes_value     VARCHAR[],
+    attributes                    MAP(VARCHAR, VARIANT),
+    resource_attributes           MAP(VARCHAR, VARIANT),
     scope_name                    VARCHAR
 );`
 

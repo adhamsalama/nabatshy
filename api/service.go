@@ -1614,8 +1614,8 @@ func (s *TelemetryService) GetOtelMetrics(ctx context.Context, limit int, metric
 			aggregation_temporality, is_monotonic,
 			histogram_count, histogram_sum,
 			scope_name,
-			attributes_key, attributes_value,
-			resource_attributes_key, resource_attributes_value
+			map_keys(attributes), map_values(attributes)::VARCHAR[],
+			map_keys(resource_attributes), map_values(resource_attributes)::VARCHAR[]
 		FROM metric_data_point
 		%s
 		ORDER BY time_unix_nano DESC
@@ -1682,7 +1682,7 @@ func (s *TelemetryService) GetOtelMetricNames(ctx context.Context) ([]OtelMetric
 			metric_unit,
 			scope_name,
 			COUNT(*) AS count,
-			list_distinct(flatten(list(attributes_key))) AS attribute_keys
+			list_distinct(flatten(list(map_keys(attributes)))) AS attribute_keys
 		FROM metric_data_point
 		GROUP BY metric_name, metric_type, metric_unit, scope_name
 		ORDER BY metric_name
@@ -1738,7 +1738,7 @@ func (s *TelemetryService) GetOtelMetricSeries(ctx context.Context, metricName s
 	args := []any{}
 	var groupSelect string
 	if groupBy != "" {
-		groupSelect = "COALESCE(list_element(attributes_value, list_position(attributes_key, ?)), '')"
+		groupSelect = "COALESCE(attributes[?]::VARCHAR, '')"
 		args = append(args, groupBy)
 	} else {
 		groupSelect = "''"
@@ -1899,8 +1899,8 @@ func (s *TelemetryService) GetLogs(ctx context.Context, dr DateRange, traceID, s
 			SELECT
 				timestamp_unix_nano, severity_text, severity_number,
 				body, trace_id, span_id, service_name, scope_name,
-				attributes_key, attributes_value,
-				resource_attributes_key, resource_attributes_value
+				map_keys(attributes), map_values(attributes)::VARCHAR[],
+				map_keys(resource_attributes), map_values(resource_attributes)::VARCHAR[]
 			FROM (
 				SELECT *, fts_main_log_record.match_bm25(rowid, ?) AS __score
 				FROM log_record
@@ -1935,8 +1935,8 @@ func (s *TelemetryService) GetLogs(ctx context.Context, dr DateRange, traceID, s
 			SELECT
 				timestamp_unix_nano, severity_text, severity_number,
 				body, trace_id, span_id, service_name, scope_name,
-				attributes_key, attributes_value,
-				resource_attributes_key, resource_attributes_value
+				map_keys(attributes), map_values(attributes)::VARCHAR[],
+				map_keys(resource_attributes), map_values(resource_attributes)::VARCHAR[]
 			FROM log_record
 			WHERE %s
 			ORDER BY %s %s

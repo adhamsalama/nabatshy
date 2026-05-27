@@ -3,14 +3,11 @@ package utils
 import (
 	"context"
 	"database/sql"
-	"database/sql/driver"
 	"fmt"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
-
-	duckdb "github.com/duckdb/duckdb-go/v2"
 )
 
 func PadQueryResult(rows *sql.Rows, intervalSQL string, dateRange DateRange) ([]TimePercentile, error) {
@@ -145,123 +142,67 @@ func InsertMetricDataPoints(db *sql.DB, ctx context.Context, points []MetricData
 	if len(points) == 0 {
 		return nil
 	}
-
-	conn, err := db.Conn(ctx)
-	if err != nil {
-		return fmt.Errorf("getting conn: %w", err)
+	appender := NewSQLAppender(db, "metric_data_point", len(points)+1, time.Hour)
+	for _, p := range points {
+		bucketCounts := p.HistogramBucketCounts
+		if bucketCounts == nil {
+			bucketCounts = []int64{}
+		}
+		explicitBounds := p.HistogramExplicitBounds
+		if explicitBounds == nil {
+			explicitBounds = []float64{}
+		}
+		attrs := p.Attributes
+		if attrs == nil {
+			attrs = map[string]any{}
+		}
+		resAttrs := p.ResourceAttributes
+		if resAttrs == nil {
+			resAttrs = map[string]any{}
+		}
+		if err := appender.AppendRow(
+			p.MetricName, p.MetricDescription, p.MetricUnit, p.MetricType,
+			p.TimeUnixNano, p.StartTimeUnixNano,
+			p.ValueDouble, p.ValueInt,
+			p.AggregationTemporality, p.IsMonotonic,
+			p.HistogramCount, p.HistogramSum, p.HistogramMin, p.HistogramMax,
+			bucketCounts, explicitBounds,
+			attrs, resAttrs,
+			p.ScopeName,
+		); err != nil {
+			appender.Close()
+			return fmt.Errorf("appending row: %w", err)
+		}
 	}
-	defer conn.Close()
-
-	return conn.Raw(func(c any) error {
-		driverConn, ok := c.(driver.Conn)
-		if !ok {
-			return fmt.Errorf("unexpected connection type %T", c)
-		}
-
-		appender, err := duckdb.NewAppenderFromConn(driverConn, "", "metric_data_point")
-		if err != nil {
-			return fmt.Errorf("creating appender: %w", err)
-		}
-
-		for _, p := range points {
-			bucketCounts := p.HistogramBucketCounts
-			if bucketCounts == nil {
-				bucketCounts = []int64{}
-			}
-			explicitBounds := p.HistogramExplicitBounds
-			if explicitBounds == nil {
-				explicitBounds = []float64{}
-			}
-			attrKeys := p.AttributesKey
-			if attrKeys == nil {
-				attrKeys = []string{}
-			}
-			attrValues := p.AttributesValue
-			if attrValues == nil {
-				attrValues = []string{}
-			}
-			resKeys := p.ResourceAttributesKey
-			if resKeys == nil {
-				resKeys = []string{}
-			}
-			resValues := p.ResourceAttributesValue
-			if resValues == nil {
-				resValues = []string{}
-			}
-
-			if err := appender.AppendRow(
-				p.MetricName, p.MetricDescription, p.MetricUnit, p.MetricType,
-				p.TimeUnixNano, p.StartTimeUnixNano,
-				p.ValueDouble, p.ValueInt,
-				p.AggregationTemporality, p.IsMonotonic,
-				p.HistogramCount, p.HistogramSum, p.HistogramMin, p.HistogramMax,
-				bucketCounts, explicitBounds,
-				attrKeys, attrValues,
-				resKeys, resValues,
-				p.ScopeName,
-			); err != nil {
-				appender.Close()
-				return fmt.Errorf("appending row: %w", err)
-			}
-		}
-		return appender.Close()
-	})
+	return appender.Close()
 }
 
 func InsertLogRecords(db *sql.DB, ctx context.Context, logs []LogRecord) error {
 	if len(logs) == 0 {
 		return nil
 	}
-
-	conn, err := db.Conn(ctx)
-	if err != nil {
-		return fmt.Errorf("getting conn: %w", err)
+	appender := NewSQLAppender(db, "log_record", len(logs)+1, time.Hour)
+	for _, l := range logs {
+		attrs := l.Attributes
+		if attrs == nil {
+			attrs = map[string]any{}
+		}
+		resAttrs := l.ResourceAttributes
+		if resAttrs == nil {
+			resAttrs = map[string]any{}
+		}
+		if err := appender.AppendRow(
+			l.TimestampUnixNano, l.ObservedTimeUnixNano,
+			l.SeverityText, l.SeverityNumber,
+			l.Body, l.TraceID, l.SpanID, l.ServiceName,
+			attrs, resAttrs,
+			l.ScopeName,
+		); err != nil {
+			appender.Close()
+			return fmt.Errorf("appending row: %w", err)
+		}
 	}
-	defer conn.Close()
-
-	return conn.Raw(func(c any) error {
-		driverConn, ok := c.(driver.Conn)
-		if !ok {
-			return fmt.Errorf("unexpected connection type %T", c)
-		}
-
-		appender, err := duckdb.NewAppenderFromConn(driverConn, "", "log_record")
-		if err != nil {
-			return fmt.Errorf("creating appender: %w", err)
-		}
-
-		for _, l := range logs {
-			attrKeys := l.AttributesKey
-			if attrKeys == nil {
-				attrKeys = []string{}
-			}
-			attrValues := l.AttributesValue
-			if attrValues == nil {
-				attrValues = []string{}
-			}
-			resKeys := l.ResourceAttributesKey
-			if resKeys == nil {
-				resKeys = []string{}
-			}
-			resValues := l.ResourceAttributesValue
-			if resValues == nil {
-				resValues = []string{}
-			}
-
-			if err := appender.AppendRow(
-				l.TimestampUnixNano, l.ObservedTimeUnixNano,
-				l.SeverityText, l.SeverityNumber,
-				l.Body, l.TraceID, l.SpanID, l.ServiceName,
-				attrKeys, attrValues,
-				resKeys, resValues,
-				l.ScopeName,
-			); err != nil {
-				appender.Close()
-				return fmt.Errorf("appending row: %w", err)
-			}
-		}
-		return appender.Close()
-	})
+	return appender.Close()
 }
 
 func InsertDenormalizedSpans(db *sql.DB, ctx context.Context, spans []Span) error {

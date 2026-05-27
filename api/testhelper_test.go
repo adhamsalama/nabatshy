@@ -239,13 +239,14 @@ func seedLogs(t *testing.T, db *sql.DB) {
 		query := fmt.Sprintf(`INSERT INTO log_record VALUES (
 			%d, %d, '%s', %d, '%s',
 			'%s', '%s', '%s',
-			['app'], ['nabatshy'],
-			['service.name'], ['%s'],
+			%s,
+			%s,
 			'%s'
 		)`,
 			l.ts, l.ts, l.severity, l.sevNum, l.body,
 			l.traceID, l.spanID, l.service,
-			l.service,
+			spanMapLiteral(map[string]string{"app": "nabatshy"}),
+			spanMapLiteral(map[string]string{"service.name": l.service}),
 			l.service,
 		)
 		if _, err := db.Exec(query); err != nil {
@@ -281,13 +282,15 @@ func seedMetrics(t *testing.T, db *sql.DB) {
 			'AGGREGATION_TEMPORALITY_CUMULATIVE', false,
 			0, 0, 0, 0,
 			[]::BIGINT[], []::DOUBLE[],
-			['service'], ['frontend'],
-			['service.name'], ['frontend'],
+			%s,
+			%s,
 			'frontend'
 		)`,
 			m.name, m.unit, m.mtype,
 			m.ts, m.ts,
 			m.valDouble, m.valInt,
+			spanMapLiteral(map[string]string{"service": "frontend"}),
+			spanMapLiteral(map[string]string{"service.name": "frontend"}),
 		)
 		if _, err := db.Exec(query); err != nil {
 			t.Fatalf("seed metric: %v", err)
