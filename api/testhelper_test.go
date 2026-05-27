@@ -127,13 +127,13 @@ func int64Arr(ns []int64) string {
 	return "[" + strings.Join(parts, ", ") + "]"
 }
 
-func strArrArr(sss [][]string) string {
-	if len(sss) == 0 {
-		return "[]::VARCHAR[][]"
+func mapArrLiteral(ms []map[string]string) string {
+	if len(ms) == 0 {
+		return "[]::MAP(VARCHAR, VARIANT)[]"
 	}
-	parts := make([]string, len(sss))
-	for i, ss := range sss {
-		parts[i] = strArr(ss)
+	parts := make([]string, len(ms))
+	for i, m := range ms {
+		parts[i] = spanMapLiteral(m)
 	}
 	return "[" + strings.Join(parts, ", ") + "]"
 }
@@ -148,11 +148,11 @@ func seedSpans(t *testing.T, db *sql.DB) {
 		kind, name                    string
 		start, end                    time.Time
 		scopeName                     string
-		resKeys, resVals              []string
+		resAttrs                      map[string]string
 		spanAttrs                     map[string]string
 		evtTimes                      []int64
 		evtNames                      []string
-		evtAttrKeys, evtAttrVals      [][]string
+		evtAttrs                      []map[string]string
 	}
 
 	spans := []span{
@@ -162,11 +162,11 @@ func seedSpans(t *testing.T, db *sql.DB) {
 			kind: "SPAN_KIND_SERVER", name: "GET /users",
 			start: now.Add(-10 * time.Minute), end: now.Add(-9 * time.Minute),
 			scopeName: "frontend",
-			resKeys:   []string{"service.name"}, resVals: []string{"frontend"},
+			resAttrs:  map[string]string{"service.name": "frontend"},
 			spanAttrs: map[string]string{"http.method": "GET", "http.status_code": "200"},
 			evtTimes:  []int64{now.Add(-9*time.Minute + 30*time.Second).UnixNano()},
 			evtNames:  []string{"log"},
-			evtAttrKeys: [][]string{{"level"}}, evtAttrVals: [][]string{{"info"}},
+			evtAttrs:  []map[string]string{{"level": "info"}},
 		},
 		{
 			// S2: child span, trace T1, db
@@ -174,7 +174,7 @@ func seedSpans(t *testing.T, db *sql.DB) {
 			kind: "SPAN_KIND_CLIENT", name: "db.query",
 			start: now.Add(-10 * time.Minute), end: now.Add(-9*time.Minute + 30*time.Second),
 			scopeName: "db",
-			resKeys:   []string{"service.name"}, resVals: []string{"db"},
+			resAttrs:  map[string]string{"service.name": "db"},
 			spanAttrs: map[string]string{"db.statement": "SELECT * FROM users"},
 		},
 		{
@@ -183,11 +183,11 @@ func seedSpans(t *testing.T, db *sql.DB) {
 			kind: "SPAN_KIND_SERVER", name: "POST /orders",
 			start: now.Add(-5 * time.Minute), end: now.Add(-3 * time.Minute),
 			scopeName: "frontend",
-			resKeys:   []string{"service.name"}, resVals: []string{"frontend"},
+			resAttrs:  map[string]string{"service.name": "frontend"},
 			spanAttrs: map[string]string{"http.method": "POST", "http.status_code": "201"},
 			evtTimes:  []int64{now.Add(-4 * time.Minute).UnixNano()},
 			evtNames:  []string{"exception"},
-			evtAttrKeys: [][]string{{"exception.type"}}, evtAttrVals: [][]string{{"ValueError"}},
+			evtAttrs:  []map[string]string{{"exception.type": "ValueError"}},
 		},
 	}
 
@@ -198,18 +198,18 @@ func seedSpans(t *testing.T, db *sql.DB) {
 			'%s', '%s', '%s', 0, '%s', '%s',
 			%d, %d, %d,
 			'scope-%s', '%s', 'res-%s', '',
-			%s, %s,
 			%s,
-			%s, %s, %s, %s
+			%s,
+			%s, %s, %s
 		)`,
 			s.traceID, s.spanID, s.parentSpanID,
 			s.kind, s.name,
 			startNs, endNs, endNs-startNs,
 			s.scopeName, s.scopeName, s.scopeName,
-			strArr(s.resKeys), strArr(s.resVals),
+			spanMapLiteral(s.resAttrs),
 			spanMapLiteral(s.spanAttrs),
 			int64Arr(s.evtTimes), strArr(s.evtNames),
-			strArrArr(s.evtAttrKeys), strArrArr(s.evtAttrVals),
+			mapArrLiteral(s.evtAttrs),
 		)
 		if _, err := db.Exec(query); err != nil {
 			t.Fatalf("seed span %s: %v", s.spanID, err)

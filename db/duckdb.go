@@ -27,13 +27,11 @@ CREATE TABLE IF NOT EXISTS denormalized_span (
     scope_name              VARCHAR,
     resource_id             VARCHAR,
     resource_schema_url     VARCHAR,
-    resource_attributes_key   VARCHAR[],
-    resource_attributes_value VARCHAR[],
+    resource_attributes       MAP(VARCHAR, VARIANT),
     span_attributes           MAP(VARCHAR, VARIANT),
     events_time_unix_nano     BIGINT[],
     events_name               VARCHAR[],
-    events_attributes_key     VARCHAR[][],
-    events_attributes_value   VARCHAR[][]
+    events_attributes         MAP(VARCHAR, VARIANT)[]
 );
 CREATE TABLE IF NOT EXISTS cron_jobs (
     id          VARCHAR PRIMARY KEY,

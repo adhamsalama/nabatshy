@@ -182,6 +182,8 @@ func toLiteral(v any) (string, error) {
 		return variantLiteral(val.V)
 	case map[string]any:
 		return mapVariantLiteral(val)
+	case []map[string]any:
+		return mapVariantSliceLiteral(val)
 	default:
 		return "", fmt.Errorf("unsupported type %T", v)
 	}
@@ -258,6 +260,21 @@ func variantLiteral(v any) (string, error) {
 	default:
 		return "", fmt.Errorf("unsupported VARIANT value type %T", v)
 	}
+}
+
+func mapVariantSliceLiteral(ms []map[string]any) (string, error) {
+	if len(ms) == 0 {
+		return "[]::MAP(VARCHAR, VARIANT)[]", nil
+	}
+	parts := make([]string, len(ms))
+	for i, m := range ms {
+		lit, err := mapVariantLiteral(m)
+		if err != nil {
+			return "", fmt.Errorf("element %d: %w", i, err)
+		}
+		parts[i] = lit
+	}
+	return "[" + strings.Join(parts, ", ") + "]", nil
 }
 
 func mapVariantLiteral(m map[string]any) (string, error) {

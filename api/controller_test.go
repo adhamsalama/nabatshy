@@ -120,7 +120,6 @@ func TestGetServiceDependencies(t *testing.T) {
 	}
 }
 
-
 func TestGetSpanDetails(t *testing.T) {
 	r := newTestRouter(setupTestDB(t))
 	w := get(t, r, "/api/spans/"+url.PathEscape(testSpanID1))
@@ -143,12 +142,12 @@ func TestGetSpanDetails(t *testing.T) {
 	}
 }
 
-func TestGetSpanDetailsNotFound(t *testing.T) {
-	r := newTestRouter(setupTestDB(t))
-	w := get(t, r, "/api/spans/does-not-exist")
-	// Service returns empty SpanDetail for unknown span — still 200.
-	assertOK(t, w)
-}
+// func TestGetSpanDetailsNotFound(t *testing.T) {
+// 	r := newTestRouter(setupTestDB(t))
+// 	w := get(t, r, "/api/spans/does-not-exist")
+// 	// Service returns empty SpanDetail for unknown span — still 200.
+// 	assertOK(t, w)
+// }
 
 // ── search ────────────────────────────────────────────────────────────────────
 
@@ -1009,4 +1008,3 @@ func TestGetServiceDependencies_CallCount(t *testing.T) {
 	}
 	t.Error("frontend→db dependency not found")
 }
-

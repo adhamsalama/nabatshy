@@ -272,11 +272,9 @@ func InsertDenormalizedSpans(db *sql.DB, ctx context.Context, spans []Span) erro
 	appender := NewSQLAppender(db, "denormalized_span", len(spans)+1, time.Hour)
 
 	for _, span := range spans {
-		resourceKeys := make([]string, len(span.ResourceAttributes))
-		resourceValues := make([]string, len(span.ResourceAttributes))
-		for i, attr := range span.ResourceAttributes {
-			resourceKeys[i] = attr.Key
-			resourceValues[i] = attr.Value
+		resourceAttrs := make(map[string]any, len(span.ResourceAttributes))
+		for _, attr := range span.ResourceAttributes {
+			resourceAttrs[attr.Key] = attr.Value
 		}
 
 		spanAttrs := make(map[string]any, len(span.SpanAttributes))
@@ -286,19 +284,15 @@ func InsertDenormalizedSpans(db *sql.DB, ctx context.Context, spans []Span) erro
 
 		eventTimes := make([]int64, len(span.Events))
 		eventNames := make([]string, len(span.Events))
-		eventAttrKeys := make([][]string, len(span.Events))
-		eventAttrValues := make([][]string, len(span.Events))
+		eventAttrs := make([]map[string]any, len(span.Events))
 		for i, event := range span.Events {
 			eventTimes[i] = event.TimeUnixNano
 			eventNames[i] = event.Name
-			keys := make([]string, len(event.Attributes))
-			values := make([]string, len(event.Attributes))
-			for j, attr := range event.Attributes {
-				keys[j] = attr.Key
-				values[j] = attr.Value
+			m := make(map[string]any, len(event.Attributes))
+			for _, attr := range event.Attributes {
+				m[attr.Key] = attr.Value
 			}
-			eventAttrKeys[i] = keys
-			eventAttrValues[i] = values
+			eventAttrs[i] = m
 		}
 
 		if err := appender.AppendRow(
@@ -306,9 +300,9 @@ func InsertDenormalizedSpans(db *sql.DB, ctx context.Context, spans []Span) erro
 			span.StartTimeUnixNano, span.EndTimeUnixNano,
 			span.EndTimeUnixNano-span.StartTimeUnixNano,
 			span.ScopeID.String(), span.ScopeName, span.ResourceID.String(), span.ResourceSchemaURL,
-			resourceKeys, resourceValues,
+			resourceAttrs,
 			spanAttrs,
-			eventTimes, eventNames, eventAttrKeys, eventAttrValues,
+			eventTimes, eventNames, eventAttrs,
 		); err != nil {
 			appender.Close()
 			return fmt.Errorf("appending row: %w", err)

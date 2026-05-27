@@ -181,10 +181,7 @@ func (s *TelemetryService) GetTopSlowTraces(ctx context.Context, n uint, service
 		goqu.C("start_time_unix_nano").Lte(dr.End.UnixNano()),
 	}
 	if service != "" {
-		conds = append(conds, goqu.And(
-			goqu.L("list_contains(resource_attributes_key, 'service.name')"),
-			goqu.L("resource_attributes_value[list_position(resource_attributes_key, 'service.name')] = ?", service),
-		))
+		conds = append(conds, goqu.L("resource_attributes['service.name']::VARCHAR = ?", service))
 	}
 	ds := s.DB.
 		From("denormalized_span").
@@ -271,8 +268,8 @@ func (s *TelemetryService) GetTraceDetails(ctx context.Context, traceID string) 
 			goqu.L("duration_ns").As("duration"),
 			goqu.C("events_time_unix_nano").As("event_times"),
 			goqu.C("events_name").As("event_names"),
-			goqu.C("events_attributes_key").As("event_attr_keys"),
-			goqu.C("events_attributes_value").As("event_attr_values"),
+			goqu.L("list_transform(events_attributes, x -> map_keys(x))").As("event_attr_keys"),
+			goqu.L("list_transform(events_attributes, x -> map_values(x)::VARCHAR[])").As("event_attr_values"),
 		).
 		Where(goqu.C("trace_id").Eq(traceID)).
 		Order(goqu.C("start_time_unix_nano").Asc())
@@ -503,14 +500,14 @@ func (s *TelemetryService) GetSpanDetails(ctx context.Context, spanID string) (*
 			goqu.I("start_time_unix_nano"),
 			goqu.I("end_time_unix_nano"),
 			goqu.L("duration_ns / 1000000").As("duration_ms"),
-			goqu.C("resource_attributes_key").As("resource_keys"),
-			goqu.C("resource_attributes_value").As("resource_values"),
+			goqu.L("map_keys(resource_attributes)").As("resource_keys"),
+			goqu.L("map_values(resource_attributes)::VARCHAR[]").As("resource_values"),
 			goqu.L("map_keys(span_attributes)").As("span_keys"),
 			goqu.L("map_values(span_attributes)::VARCHAR[]").As("span_values"),
 			goqu.C("events_time_unix_nano").As("event_times"),
 			goqu.C("events_name").As("event_names"),
-			goqu.C("events_attributes_key").As("event_attr_keys"),
-			goqu.C("events_attributes_value").As("event_attr_values"),
+			goqu.L("list_transform(events_attributes, x -> map_keys(x))").As("event_attr_keys"),
+			goqu.L("list_transform(events_attributes, x -> map_values(x)::VARCHAR[])").As("event_attr_values"),
 		).
 		Where(goqu.I("span_id").Eq(spanID))
 
@@ -804,47 +801,32 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 					switch attr.Operator {
 					case "=":
 						attrConds = append(attrConds, goqu.Or(
-							goqu.And(
-								goqu.L("list_contains(resource_attributes_key, ?)", attr.Key),
-								goqu.L("list_contains(resource_attributes_value, ?)", attr.Value),
-							),
+							goqu.L("resource_attributes[?]::VARCHAR = ?", attr.Key, attr.Value),
 							goqu.L("span_attributes[?]::VARCHAR = ?", attr.Key, attr.Value),
 						))
 					case "!=":
 						attrConds = append(attrConds, goqu.And(
-							goqu.Or(
-								goqu.L("NOT list_contains(resource_attributes_key, ?)", attr.Key),
-								goqu.And(
-									goqu.L("list_contains(resource_attributes_key, ?)", attr.Key),
-									goqu.L("NOT list_contains(resource_attributes_value, ?)", attr.Value),
-								),
-							),
+							goqu.L("resource_attributes[?] IS NULL OR resource_attributes[?]::VARCHAR != ?", attr.Key, attr.Key, attr.Value),
 							goqu.L("span_attributes[?] IS NULL OR span_attributes[?]::VARCHAR != ?", attr.Key, attr.Key, attr.Value),
 						))
 					case ">=":
 						attrConds = append(attrConds, goqu.Or(
-							goqu.And(
-								goqu.L("list_contains(resource_attributes_key, ?)", attr.Key),
-								goqu.L("CAST(resource_attributes_value[list_position(resource_attributes_key, ?)] AS FLOAT) >= ?", attr.Key, attr.Key, attr.Value),
-							),
+							goqu.L("CAST(resource_attributes[?] AS FLOAT) >= ?", attr.Key, attr.Value),
 							goqu.L("CAST(span_attributes[?] AS FLOAT) >= ?", attr.Key, attr.Value),
 						))
 					case "<=":
 						attrConds = append(attrConds, goqu.Or(
-							goqu.And(
-								goqu.L("list_contains(resource_attributes_key, ?)", attr.Key),
-								goqu.L("CAST(resource_attributes_value[list_position(resource_attributes_key, ?)] AS FLOAT) <= ?", attr.Key, attr.Key, attr.Value),
-							),
+							goqu.L("CAST(resource_attributes[?] AS FLOAT) <= ?", attr.Key, attr.Value),
 							goqu.L("CAST(span_attributes[?] AS FLOAT) <= ?", attr.Key, attr.Value),
 						))
 					case ">":
 						attrConds = append(attrConds, goqu.Or(
-							goqu.L("CAST(resource_attributes_value[list_position(resource_attributes_key, ?)] AS FLOAT) > ?", attr.Key, attr.Value),
+							goqu.L("CAST(resource_attributes[?] AS FLOAT) > ?", attr.Key, attr.Value),
 							goqu.L("CAST(span_attributes[?] AS FLOAT) > ?", attr.Key, attr.Value),
 						))
 					case "<":
 						attrConds = append(attrConds, goqu.Or(
-							goqu.L("CAST(resource_attributes_value[list_position(resource_attributes_key, ?)] AS FLOAT) < ?", attr.Key, attr.Value),
+							goqu.L("CAST(resource_attributes[?] AS FLOAT) < ?", attr.Key, attr.Value),
 							goqu.L("CAST(span_attributes[?] AS FLOAT) < ?", attr.Key, attr.Value),
 						))
 					default:
@@ -860,8 +842,8 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 				goqu.I("scope_name").Eq(query),
 				goqu.I("trace_id").Eq(query),
 				goqu.I("span_id").Eq(query),
-				goqu.L("list_contains(resource_attributes_key, ?)", query),
-				goqu.L("list_contains(resource_attributes_value, ?)", query),
+				goqu.L("list_contains(map_keys(resource_attributes), ?)", query),
+				goqu.L("list_contains(map_values(resource_attributes)::VARCHAR[], ?)", query),
 				goqu.L("list_contains(map_keys(span_attributes), ?)", query),
 				goqu.L("list_contains(map_values(span_attributes)::VARCHAR[], ?)", query),
 			))
@@ -886,8 +868,8 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 			goqu.I("start_time_unix_nano"),
 			goqu.I("end_time_unix_nano"),
 			goqu.L("list_contains(events_name, 'exception')").As("has_error"),
-			goqu.C("resource_attributes_key").As("resource_keys"),
-			goqu.C("resource_attributes_value").As("resource_values"),
+			goqu.L("map_keys(resource_attributes)").As("resource_keys"),
+			goqu.L("map_values(resource_attributes)::VARCHAR[]").As("resource_values"),
 			goqu.L("map_keys(span_attributes)").As("span_keys"),
 			goqu.L("map_values(span_attributes)::VARCHAR[]").As("span_values"),
 		).
@@ -1308,7 +1290,7 @@ func (s *TelemetryService) GetErrorCounts(
 
 	serviceFilter := ""
 	if service != "" {
-		serviceFilter = fmt.Sprintf(` AND list_contains(resource_attributes_key, 'service.name') AND resource_attributes_value[list_position(resource_attributes_key, 'service.name')] = '%s'`, service)
+		serviceFilter = fmt.Sprintf(` AND resource_attributes['service.name']::VARCHAR = '%s'`, service)
 	}
 
 	query := fmt.Sprintf(`
@@ -1489,47 +1471,32 @@ func (s *TelemetryService) GetSearchMetrics(ctx context.Context, dateRange DateR
 					switch attr.Operator {
 					case "=":
 						attrConds = append(attrConds, goqu.Or(
-							goqu.And(
-								goqu.L("list_contains(resource_attributes_key, ?)", attr.Key),
-								goqu.L("list_contains(resource_attributes_value, ?)", attr.Value),
-							),
+							goqu.L("resource_attributes[?]::VARCHAR = ?", attr.Key, attr.Value),
 							goqu.L("span_attributes[?]::VARCHAR = ?", attr.Key, attr.Value),
 						))
 					case "!=":
 						attrConds = append(attrConds, goqu.And(
-							goqu.Or(
-								goqu.L("NOT list_contains(resource_attributes_key, ?)", attr.Key),
-								goqu.And(
-									goqu.L("list_contains(resource_attributes_key, ?)", attr.Key),
-									goqu.L("NOT list_contains(resource_attributes_value, ?)", attr.Value),
-								),
-							),
+							goqu.L("resource_attributes[?] IS NULL OR resource_attributes[?]::VARCHAR != ?", attr.Key, attr.Key, attr.Value),
 							goqu.L("span_attributes[?] IS NULL OR span_attributes[?]::VARCHAR != ?", attr.Key, attr.Key, attr.Value),
 						))
 					case ">=":
 						attrConds = append(attrConds, goqu.Or(
-							goqu.And(
-								goqu.L("list_contains(resource_attributes_key, ?)", attr.Key),
-								goqu.L("CAST(resource_attributes_value[list_position(resource_attributes_key, ?)] AS FLOAT) >= ?", attr.Key, attr.Key, attr.Value),
-							),
+							goqu.L("CAST(resource_attributes[?] AS FLOAT) >= ?", attr.Key, attr.Value),
 							goqu.L("CAST(span_attributes[?] AS FLOAT) >= ?", attr.Key, attr.Value),
 						))
 					case "<=":
 						attrConds = append(attrConds, goqu.Or(
-							goqu.And(
-								goqu.L("list_contains(resource_attributes_key, ?)", attr.Key),
-								goqu.L("CAST(resource_attributes_value[list_position(resource_attributes_key, ?)] AS FLOAT) <= ?", attr.Key, attr.Key, attr.Value),
-							),
+							goqu.L("CAST(resource_attributes[?] AS FLOAT) <= ?", attr.Key, attr.Value),
 							goqu.L("CAST(span_attributes[?] AS FLOAT) <= ?", attr.Key, attr.Value),
 						))
 					case ">":
 						attrConds = append(attrConds, goqu.Or(
-							goqu.L("CAST(resource_attributes_value[list_position(resource_attributes_key, ?)] AS FLOAT) > ?", attr.Key, attr.Value),
+							goqu.L("CAST(resource_attributes[?] AS FLOAT) > ?", attr.Key, attr.Value),
 							goqu.L("CAST(span_attributes[?] AS FLOAT) > ?", attr.Key, attr.Value),
 						))
 					case "<":
 						attrConds = append(attrConds, goqu.Or(
-							goqu.L("CAST(resource_attributes_value[list_position(resource_attributes_key, ?)] AS FLOAT) < ?", attr.Key, attr.Value),
+							goqu.L("CAST(resource_attributes[?] AS FLOAT) < ?", attr.Key, attr.Value),
 							goqu.L("CAST(span_attributes[?] AS FLOAT) < ?", attr.Key, attr.Value),
 						))
 					default:
@@ -1545,8 +1512,8 @@ func (s *TelemetryService) GetSearchMetrics(ctx context.Context, dateRange DateR
 				goqu.I("scope_name").Eq(query),
 				goqu.I("trace_id").Eq(query),
 				goqu.I("span_id").Eq(query),
-				goqu.L("list_contains(resource_attributes_key, ?)", query),
-				goqu.L("list_contains(resource_attributes_value, ?)", query),
+				goqu.L("list_contains(map_keys(resource_attributes), ?)", query),
+				goqu.L("list_contains(map_values(resource_attributes)::VARCHAR[], ?)", query),
 				goqu.L("list_contains(map_keys(span_attributes), ?)", query),
 				goqu.L("list_contains(map_values(span_attributes)::VARCHAR[], ?)", query),
 			))
@@ -1574,9 +1541,9 @@ func (s *TelemetryService) GetSearchMetrics(ctx context.Context, dateRange DateR
 func (s *TelemetryService) GetUniqueServiceNames(ctx context.Context) ([]string, error) {
 	query := `
 		SELECT DISTINCT
-			resource_attributes_value[list_position(resource_attributes_key, 'service.name')] AS service_name
+			resource_attributes['service.name']::VARCHAR AS service_name
 		FROM denormalized_span
-		WHERE list_contains(resource_attributes_key, 'service.name')
+		WHERE resource_attributes['service.name'] IS NOT NULL
 		ORDER BY service_name
 	`
 
