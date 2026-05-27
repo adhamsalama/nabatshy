@@ -11,6 +11,7 @@ import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import CloseIcon from '@mui/icons-material/Close';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import { TraceDetails } from './TraceDetails';
 import { config } from '../config';
 
@@ -150,7 +151,7 @@ export function SQLPage() {
                         component="pre"
                         sx={{ m: 0, p: 1.5, bgcolor: 'action.hover', borderRadius: 1, fontFamily: 'monospace', fontSize: 12, overflowX: 'auto', whiteSpace: 'pre' }}
                       >
-                        {`CREATE TABLE ${table} (\n${schema[table].map((col, i, arr) => `  ${col.column_name} ${col.data_type}${i < arr.length - 1 ? ',' : ''}`).join('\n')}\n);`}
+                        {`CREATE TABLE ${table} (\n${schema[table].map((col, i, arr) => `  ${col.column_name} ${col.data_type}${i < arr.length - 1 ? ',' : ''}${col.data_type.toUpperCase().includes('VARIANT') ? '  -- ⚠ not directly scannable' : ''}`).join('\n')}\n);`}
                       </Box>
                     </AccordionDetails>
                   </Accordion>
@@ -165,15 +166,20 @@ export function SQLPage() {
                     </AccordionSummary>
                     <AccordionDetails sx={{ pt: 0 }}>
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
-                        {schema[table].map(col => (
-                          <Chip
-                            key={col.column_name}
-                            label={`${col.column_name}: ${col.data_type}`}
-                            size="small"
-                            variant="outlined"
-                            sx={{ fontFamily: 'monospace', fontSize: 11 }}
-                          />
-                        ))}
+                        {schema[table].map(col => {
+                          const isVariant = col.data_type.toUpperCase().includes('VARIANT');
+                          return (
+                            <Chip
+                              key={col.column_name}
+                              label={`${col.column_name}: ${col.data_type}`}
+                              size="small"
+                              variant="outlined"
+                              color={isVariant ? 'warning' : 'default'}
+                              icon={isVariant ? <WarningAmberIcon /> : undefined}
+                              sx={{ fontFamily: 'monospace', fontSize: 11 }}
+                            />
+                          );
+                        })}
                       </Box>
                     </AccordionDetails>
                   </Accordion>
