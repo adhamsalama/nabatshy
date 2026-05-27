@@ -51,7 +51,7 @@ const SpanLogsPanel: React.FC<Props> = ({ spanId, traceId, title = 'Logs' }) => 
 
     fetch(`${config.backendUrl}/api/logs?${params}`)
       .then(res => res.json())
-      .then((data: LogRow[]) => setLogs(data ?? []))
+      .then((data: { rows: LogRow[] } | LogRow[]) => setLogs(Array.isArray(data) ? data : (data.rows ?? [])))
       .catch(() => setLogs([]))
       .finally(() => setLoading(false));
   }, [spanId, traceId]);
