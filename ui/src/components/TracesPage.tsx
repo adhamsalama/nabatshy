@@ -133,6 +133,8 @@ export const TracesPage: React.FC = () => {
   const [traceOrSpan, setTraceOrSpan] = useState<"trace" | "span" | "all">("trace");
 
   const [query, setQuery] = useState('');
+  const [sqlMode, setSqlMode] = useState(false);
+  const [sqlFilter, setSqlFilter] = useState('');
   const [searchResponse, setSearchResponse] = useState<SearchResponse | null>(null);
   const [traceCountSeries, setTraceCountSeries] = useState<TimePercentile[]>([]);
   const [loading, setLoading] = useState(false);
@@ -283,32 +285,40 @@ export const TracesPage: React.FC = () => {
     preset = timePreset,
     silent = false,
     skipUrlPush = false,
+    sqlFilterValue = sqlFilter,
+    isSqlMode = sqlMode,
   ) => {
     const resolvedStart = preset !== 'custom' ? getPresetDates(preset).start : start;
     const resolvedEnd   = preset !== 'custom' ? getPresetDates(preset).end   : end;
 
-    if (!resolvedStart || !resolvedEnd || isNaN(resolvedStart.getTime()) || isNaN(resolvedEnd.getTime())) {
+    if (!isSqlMode && (!resolvedStart || !resolvedEnd || isNaN(resolvedStart.getTime()) || isNaN(resolvedEnd.getTime()))) {
       setError('Invalid start or end date');
       return;
     }
 
     let effectiveQuery = q;
-    const alreadyInQuery = q.split(',').some(p => p.trim().startsWith('service.name='));
-    if (service && !alreadyInQuery) {
-      const serviceFilter = `service.name=${service}`;
-      effectiveQuery = q ? `${serviceFilter},${q}` : serviceFilter;
+    if (!isSqlMode) {
+      const alreadyInQuery = q.split(',').some(p => p.trim().startsWith('service.name='));
+      if (service && !alreadyInQuery) {
+        const serviceFilter = `service.name=${service}`;
+        effectiveQuery = q ? `${serviceFilter},${q}` : serviceFilter;
+      }
     }
 
     const params: Record<string, string> = {
-      query: effectiveQuery,
       page: String(pageNum),
       pageSize: String(size),
       sortField: sf,
       sortOrder: so,
-      start: resolvedStart.toISOString(),
-      end: resolvedEnd.toISOString(),
-      traceOrSpan: traceOrSpanValue,
     };
+    if (isSqlMode) {
+      params.sql_filter = sqlFilterValue;
+    } else {
+      params.query = effectiveQuery;
+      params.start = resolvedStart!.toISOString();
+      params.end = resolvedEnd!.toISOString();
+      params.traceOrSpan = traceOrSpanValue;
+    }
 
     const urlParams: Record<string, string> = {
       query: effectiveQuery,
@@ -346,19 +356,21 @@ export const TracesPage: React.FC = () => {
       setSearchResponse(searchData);
       setPage(pageNum);
 
-      const metricsUrl = new URL(`${config.backendUrl}/api/metrics/search`);
-      metricsUrl.searchParams.set('query', effectiveQuery);
-      metricsUrl.searchParams.set('start', resolvedStart.toISOString());
-      metricsUrl.searchParams.set('end', resolvedEnd.toISOString());
-      metricsUrl.searchParams.set('traceOrSpan', traceOrSpanValue);
+      if (!isSqlMode) {
+        const metricsUrl = new URL(`${config.backendUrl}/api/metrics/search`);
+        metricsUrl.searchParams.set('query', effectiveQuery);
+        metricsUrl.searchParams.set('start', resolvedStart!.toISOString());
+        metricsUrl.searchParams.set('end', resolvedEnd!.toISOString());
+        metricsUrl.searchParams.set('traceOrSpan', traceOrSpanValue);
 
-      const metricsResponse = await fetch(metricsUrl.toString());
-      if (metricsResponse.ok) {
-        const metricsData = await metricsResponse.json();
-        setTraceCountSeries(metricsData.TraceCountResults || []);
-      } else {
-        console.error('Failed to fetch metrics:', await metricsResponse.text());
-        setTraceCountSeries([]);
+        const metricsResponse = await fetch(metricsUrl.toString());
+        if (metricsResponse.ok) {
+          const metricsData = await metricsResponse.json();
+          setTraceCountSeries(metricsData.TraceCountResults || []);
+        } else {
+          console.error('Failed to fetch metrics:', await metricsResponse.text());
+          setTraceCountSeries([]);
+        }
       }
     } catch (err) {
       if (!silent) {
@@ -379,7 +391,7 @@ export const TracesPage: React.FC = () => {
   const silentRefreshRef = useRef(() => {});
   useEffect(() => {
     silentRefreshRef.current = () =>
-      handleSearch(page, query, pageSize, sortField, sortOrder, startDate, endDate, selectedService, traceOrSpan, timePreset, true);
+      handleSearch(page, query, pageSize, sortField, sortOrder, startDate, endDate, selectedService, traceOrSpan, timePreset, true, false, sqlFilter, sqlMode);
   });
 
   useEffect(() => {
@@ -479,7 +491,7 @@ export const TracesPage: React.FC = () => {
       <Box sx={{ gridColumn: 'span 12', display: 'flex', flexDirection: 'column', gap: 1.5 }}>
       <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
 
-        <FormControl size="small" sx={{ minWidth: 150 }}>
+        <FormControl size="small" sx={{ minWidth: 150 }} disabled={sqlMode}>
           <InputLabel>Time Range</InputLabel>
           <Select value={timePreset} label="Time Range" onChange={handlePresetChange}>
             <MenuItem value="5m">Last 5 minutes</MenuItem>
@@ -493,7 +505,7 @@ export const TracesPage: React.FC = () => {
           </Select>
         </FormControl>
 
-        {timePreset === 'custom_min' && (
+        {!sqlMode && timePreset === 'custom_min' && (
           <TextField
             label="Minutes"
             type="number"
@@ -508,7 +520,7 @@ export const TracesPage: React.FC = () => {
           />
         )}
 
-        {timePreset === 'custom' && (
+        {!sqlMode && timePreset === 'custom' && (
           <>
             <TextField
               label="Start Time"
@@ -569,7 +581,7 @@ export const TracesPage: React.FC = () => {
           </>
         )}
 
-        <FormControl size="small" sx={{ minWidth: 200 }}>
+        <FormControl size="small" sx={{ minWidth: 200 }} disabled={sqlMode}>
           <InputLabel shrink>Service</InputLabel>
           <Select value={selectedService} label="Service" onChange={handleServiceChange} displayEmpty renderValue={v => v || 'All Services'} notched>
             <MenuItem value="">All Services</MenuItem>
@@ -579,7 +591,7 @@ export const TracesPage: React.FC = () => {
           </Select>
         </FormControl>
 
-        <FormControl size="small" sx={{ minWidth: 200 }}>
+        <FormControl size="small" sx={{ minWidth: 200 }} disabled={sqlMode}>
           <InputLabel>Trace Or Span</InputLabel>
           <Select value={traceOrSpan} label="Trace Or Span" onChange={handleTraceOrSpanChange}>
             <MenuItem value="all">All</MenuItem>
@@ -588,10 +600,35 @@ export const TracesPage: React.FC = () => {
           </Select>
         </FormControl>
 
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography variant="body2">SQL</Typography>
+          <Switch
+            checked={sqlMode}
+            onChange={e => setSqlMode(e.target.checked)}
+            size="small"
+          />
+        </Box>
+
       </Box>
       <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-        <FilterChipInput value={query} onChange={setQuery} onSearch={(q) => handleSearch(1, q)} />
-        <Button variant="outlined" startIcon={<RefreshIcon />} onClick={() => handleSearch(1)} disabled={loading}>
+        {sqlMode ? (
+          <TextField
+            multiline
+            minRows={2}
+            maxRows={6}
+            size="small"
+            fullWidth
+            placeholder="span_attributes['http.method']::VARCHAR = 'GET' AND duration_ns > 1000000"
+            value={sqlFilter}
+            onChange={e => setSqlFilter(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSearch(1, query, pageSize, sortField, sortOrder, startDate, endDate, selectedService, traceOrSpan, timePreset, false, false, sqlFilter, true); }}
+            sx={{ fontFamily: 'monospace' }}
+            inputProps={{ style: { fontFamily: 'monospace', fontSize: 13 } }}
+          />
+        ) : (
+          <FilterChipInput value={query} onChange={setQuery} onSearch={(q) => handleSearch(1, q)} />
+        )}
+        <Button variant="outlined" startIcon={<RefreshIcon />} onClick={() => handleSearch(1, query, pageSize, sortField, sortOrder, startDate, endDate, selectedService, traceOrSpan, timePreset, false, false, sqlFilter, sqlMode)} disabled={loading}>
           Refresh
         </Button>
       </Box>
@@ -607,7 +644,12 @@ export const TracesPage: React.FC = () => {
           <CircularProgress />
         </Box>
       )}
-      {!loading && searchResponse && (
+      {sqlMode && (
+        <Box sx={{ gridColumn: 'span 12' }}>
+          <Typography variant="body2" color="text.secondary">Charts are not available in SQL mode.</Typography>
+        </Box>
+      )}
+      {!sqlMode && !loading && searchResponse && (
         <Box sx={{ gridColumn: 'span 12' }}>
           <TraceCountChart
             data={traceCountSeries}

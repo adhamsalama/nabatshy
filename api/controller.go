@@ -197,8 +197,9 @@ func (c *TelemetryController) searchTraces(w http.ResponseWriter, r *http.Reques
 		timeRange := r.URL.Query().Get("timeRange")
 		dateRange = GetDateRangeFromQuery(timeRange)
 	}
+	sqlFilter := r.URL.Query().Get("sql_filter")
 	traceOrSpan := r.URL.Query().Get("traceOrSpan")
-	results, err := c.service.SearchTraces(r.Context(), dateRange, query, page, pageSize, sort, traceOrSpan)
+	results, err := c.service.SearchTraces(r.Context(), dateRange, query, sqlFilter, page, pageSize, sort, traceOrSpan)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to search traces: %v", err), http.StatusInternalServerError)
 		return
@@ -361,8 +362,9 @@ func (c *TelemetryController) getSearchMetrics(w http.ResponseWriter, r *http.Re
 		dateRange = GetDateRangeFromQuery(timeRange)
 	}
 
+	sqlFilter := r.URL.Query().Get("sql_filter")
 	traceOrSpan := r.URL.Query().Get("traceOrSpan")
-	metrics, err := c.service.GetSearchMetrics(r.Context(), dateRange, query, percentile, traceOrSpan)
+	metrics, err := c.service.GetSearchMetrics(r.Context(), dateRange, query, sqlFilter, percentile, traceOrSpan)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to get search metrics: %v", err), http.StatusInternalServerError)
 		return
