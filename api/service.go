@@ -680,7 +680,10 @@ func parseAttributeQuery(query string) []AttributeQuery {
 		return nil
 	}
 
-	if !strings.Contains(query, "=") {
+	containsEqualSign := strings.Contains(query, "=")
+	containsGtOrLt := strings.Contains(query, ">") || strings.Contains(query, "<")
+	if !containsEqualSign && !containsGtOrLt {
+		fmt.Printf("query does not have valid operators, query: %v", query)
 		return nil
 	}
 
@@ -689,8 +692,25 @@ func parseAttributeQuery(query string) []AttributeQuery {
 
 	for _, pair := range pairs {
 		pair = strings.TrimSpace(pair)
-
-		if strings.Contains(pair, "!=") {
+		if strings.Contains(pair, ">=") {
+			parts := strings.SplitN(pair, ">=", 2)
+			if len(parts) == 2 {
+				attrs = append(attrs, AttributeQuery{
+					Key:      strings.TrimSpace(parts[0]),
+					Value:    strings.TrimSpace(parts[1]),
+					Operator: ">=",
+				})
+			}
+		} else if strings.Contains(pair, "<=") {
+			parts := strings.SplitN(pair, "<=", 2)
+			if len(parts) == 2 {
+				attrs = append(attrs, AttributeQuery{
+					Key:      strings.TrimSpace(parts[0]),
+					Value:    strings.TrimSpace(parts[1]),
+					Operator: "<=",
+				})
+			}
+		} else if strings.Contains(pair, "!=") {
 			parts := strings.SplitN(pair, "!=", 2)
 			if len(parts) == 2 {
 				attrs = append(attrs, AttributeQuery{
@@ -708,6 +728,26 @@ func parseAttributeQuery(query string) []AttributeQuery {
 					Operator: "=",
 				})
 			}
+		} else if strings.Contains(pair, ">") {
+			parts := strings.SplitN(pair, ">", 2)
+			if len(parts) == 2 {
+				attrs = append(attrs, AttributeQuery{
+					Key:      strings.TrimSpace(parts[0]),
+					Value:    strings.TrimSpace(parts[1]),
+					Operator: ">",
+				})
+			}
+		} else if strings.Contains(pair, "<") {
+			parts := strings.SplitN(pair, "<", 2)
+			if len(parts) == 2 {
+				attrs = append(attrs, AttributeQuery{
+					Key:      strings.TrimSpace(parts[0]),
+					Value:    strings.TrimSpace(parts[1]),
+					Operator: "<",
+				})
+			}
+		} else {
+			fmt.Printf("unsupported operator in query pair: %v\n", pair)
 		}
 	}
 
@@ -768,10 +808,7 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 								goqu.L("list_contains(resource_attributes_key, ?)", attr.Key),
 								goqu.L("list_contains(resource_attributes_value, ?)", attr.Value),
 							),
-							goqu.And(
-								goqu.L("map_contains_key(span_attributes, ?)", attr.Key),
-								goqu.L("span_attributes[?]::VARCHAR = ?", attr.Key, attr.Value),
-							),
+							goqu.L("span_attributes[?]::VARCHAR = ?", attr.Key, attr.Value),
 						))
 					case "!=":
 						attrConds = append(attrConds, goqu.And(
@@ -782,9 +819,38 @@ func (s *TelemetryService) SearchTraces(ctx context.Context, dateRange DateRange
 									goqu.L("NOT list_contains(resource_attributes_value, ?)", attr.Value),
 								),
 							),
-							goqu.L("NOT map_contains_key(span_attributes, ?) OR span_attributes[?]::VARCHAR != ?", attr.Key, attr.Key, attr.Value),
+							goqu.L("span_attributes[?] IS NULL OR span_attributes[?]::VARCHAR != ?", attr.Key, attr.Key, attr.Value),
 						))
+					case ">=":
+						attrConds = append(attrConds, goqu.Or(
+							goqu.And(
+								goqu.L("list_contains(resource_attributes_key, ?)", attr.Key),
+								goqu.L("CAST(resource_attributes_value[list_position(resource_attributes_key, ?)] AS FLOAT) >= ?", attr.Key, attr.Key, attr.Value),
+							),
+							goqu.L("CAST(span_attributes[?] AS FLOAT) >= ?", attr.Key, attr.Value),
+						))
+					case "<=":
+						attrConds = append(attrConds, goqu.Or(
+							goqu.And(
+								goqu.L("list_contains(resource_attributes_key, ?)", attr.Key),
+								goqu.L("CAST(resource_attributes_value[list_position(resource_attributes_key, ?)] AS FLOAT) <= ?", attr.Key, attr.Key, attr.Value),
+							),
+							goqu.L("CAST(span_attributes[?] AS FLOAT) <= ?", attr.Key, attr.Value),
+						))
+					case ">":
+						attrConds = append(attrConds, goqu.Or(
+							goqu.L("CAST(resource_attributes_value[list_position(resource_attributes_key, ?)] AS FLOAT) > ?", attr.Key, attr.Value),
+							goqu.L("CAST(span_attributes[?] AS FLOAT) > ?", attr.Key, attr.Value),
+						))
+					case "<":
+						attrConds = append(attrConds, goqu.Or(
+							goqu.L("CAST(resource_attributes_value[list_position(resource_attributes_key, ?)] AS FLOAT) < ?", attr.Key, attr.Value),
+							goqu.L("CAST(span_attributes[?] AS FLOAT) < ?", attr.Key, attr.Value),
+						))
+					default:
+						fmt.Printf("Unsupported operator in attribute query: %s\n", attr.Operator)
 					}
+
 				}
 			}
 			conds = append(conds, goqu.And(attrConds...))
@@ -1427,10 +1493,7 @@ func (s *TelemetryService) GetSearchMetrics(ctx context.Context, dateRange DateR
 								goqu.L("list_contains(resource_attributes_key, ?)", attr.Key),
 								goqu.L("list_contains(resource_attributes_value, ?)", attr.Value),
 							),
-							goqu.And(
-								goqu.L("map_contains_key(span_attributes, ?)", attr.Key),
-								goqu.L("span_attributes[?]::VARCHAR = ?", attr.Key, attr.Value),
-							),
+							goqu.L("span_attributes[?]::VARCHAR = ?", attr.Key, attr.Value),
 						))
 					case "!=":
 						attrConds = append(attrConds, goqu.And(
@@ -1441,9 +1504,38 @@ func (s *TelemetryService) GetSearchMetrics(ctx context.Context, dateRange DateR
 									goqu.L("NOT list_contains(resource_attributes_value, ?)", attr.Value),
 								),
 							),
-							goqu.L("NOT map_contains_key(span_attributes, ?) OR span_attributes[?]::VARCHAR != ?", attr.Key, attr.Key, attr.Value),
+							goqu.L("span_attributes[?] IS NULL OR span_attributes[?]::VARCHAR != ?", attr.Key, attr.Key, attr.Value),
 						))
+					case ">=":
+						attrConds = append(attrConds, goqu.Or(
+							goqu.And(
+								goqu.L("list_contains(resource_attributes_key, ?)", attr.Key),
+								goqu.L("CAST(resource_attributes_value[list_position(resource_attributes_key, ?)] AS FLOAT) >= ?", attr.Key, attr.Key, attr.Value),
+							),
+							goqu.L("CAST(span_attributes[?] AS FLOAT) >= ?", attr.Key, attr.Value),
+						))
+					case "<=":
+						attrConds = append(attrConds, goqu.Or(
+							goqu.And(
+								goqu.L("list_contains(resource_attributes_key, ?)", attr.Key),
+								goqu.L("CAST(resource_attributes_value[list_position(resource_attributes_key, ?)] AS FLOAT) <= ?", attr.Key, attr.Key, attr.Value),
+							),
+							goqu.L("CAST(span_attributes[?] AS FLOAT) <= ?", attr.Key, attr.Value),
+						))
+					case ">":
+						attrConds = append(attrConds, goqu.Or(
+							goqu.L("CAST(resource_attributes_value[list_position(resource_attributes_key, ?)] AS FLOAT) > ?", attr.Key, attr.Value),
+							goqu.L("CAST(span_attributes[?] AS FLOAT) > ?", attr.Key, attr.Value),
+						))
+					case "<":
+						attrConds = append(attrConds, goqu.Or(
+							goqu.L("CAST(resource_attributes_value[list_position(resource_attributes_key, ?)] AS FLOAT) < ?", attr.Key, attr.Value),
+							goqu.L("CAST(span_attributes[?] AS FLOAT) < ?", attr.Key, attr.Value),
+						))
+					default:
+						fmt.Printf("Unsupported operator in attribute query: %s\n", attr.Operator)
 					}
+
 				}
 			}
 			conds = append(conds, goqu.And(attrConds...))
