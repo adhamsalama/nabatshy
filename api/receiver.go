@@ -2,6 +2,7 @@ package api
 
 import (
 	"database/sql"
+	"encoding/json"
 	"log"
 	"net/http"
 
@@ -10,14 +11,15 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-func Run(db *sql.DB, port string) {
+func Run(db *sql.DB, port string, demoMode bool) {
 	dialect := goqu.Dialect("default")
 	telService := TelemetryService{
 		Ch: db,
 		DB: &dialect,
 	}
 	telController := TelemetryController{
-		service: telService,
+		service:  telService,
+		demoMode: demoMode,
 	}
 
 	r := chi.NewRouter()
@@ -35,8 +37,12 @@ func Run(db *sql.DB, port string) {
 	})
 	r.Use(middleware.Logger)
 	telController.RegisterRoutes(r)
-	cronController := NewCronController(db)
+	cronController := NewCronController(db, demoMode)
 	cronController.RegisterRoutes(r)
+	r.Get("/api/config", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]bool{"demoMode": demoMode})
+	})
 	addr := ":" + port
 	log.Printf("[api] listening on %s\n", addr)
 	log.Fatal(http.ListenAndServe(addr, r))

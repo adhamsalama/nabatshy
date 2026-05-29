@@ -14,6 +14,7 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import { TraceDetails } from './TraceDetails';
 import { config } from '../config';
+import { useDemoMode } from '../DemoModeContext';
 
 interface ColumnInfo {
   table_name: string;
@@ -28,6 +29,7 @@ const DEFAULT_QUERY = `SELECT * REPLACE (
 ) FROM denormalized_span LIMIT 10`;
 
 export function SQLPage() {
+  const demoMode = useDemoMode();
   const [sql, setSql] = useState(DEFAULT_QUERY);
   const [rows, setRows] = useState<Record<string, unknown>[] | null>(null);
   const [columns, setColumns] = useState<string[]>([]);
@@ -122,6 +124,12 @@ export function SQLPage() {
         SQL Explorer
       </Typography>
 
+      {demoMode && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          SQL Explorer is not available in demo mode.
+        </Alert>
+      )}
+
       {tableNames.length > 0 && (
         <Accordion disableGutters sx={{ mb: 2 }}>
           <AccordionSummary expandIcon={<ExpandMoreIcon />}>
@@ -200,6 +208,7 @@ export function SQLPage() {
           onChange={e => setSql(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={DEFAULT_QUERY}
+          disabled={demoMode}
           slotProps={{
             input: {
               sx: {
@@ -215,7 +224,7 @@ export function SQLPage() {
             variant="contained"
             startIcon={loading ? <CircularProgress size={16} color="inherit" /> : <PlayArrowIcon />}
             onClick={runQuery}
-            disabled={loading}
+            disabled={loading || demoMode}
           >
             Run
           </Button>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Container, Box, Typography, AppBar, Toolbar, Button, IconButton, CssBaseline } from '@mui/material';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import LightModeIcon from '@mui/icons-material/LightMode';
@@ -13,9 +13,19 @@ import { MetricsPage } from './components/MetricsPage';
 import { LogsPage } from './components/LogsPage';
 import { SQLPage } from './components/SQLPage';
 import logo from '../../docs/assets/logo.png';
+import { DemoModeContext } from './DemoModeContext';
+import { config } from './config';
 
 function App() {
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('darkMode') !== 'false');
+  const [demoMode, setDemoMode] = useState(false);
+
+  useEffect(() => {
+    fetch(`${config.backendUrl}/api/config`)
+      .then(r => r.json())
+      .then(data => setDemoMode(data.demoMode ?? false))
+      .catch(() => {});
+  }, []);
 
   const theme = createTheme({
     palette: {
@@ -88,6 +98,7 @@ function App() {
   });
 
   return (
+    <DemoModeContext.Provider value={demoMode}>
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <Router>
@@ -148,6 +159,7 @@ function App() {
         </Container>
       </Router>
     </ThemeProvider>
+    </DemoModeContext.Provider>
   );
 }
 

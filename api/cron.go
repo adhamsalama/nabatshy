@@ -21,13 +21,15 @@ type CronJob struct {
 }
 
 type CronController struct {
-	db      *sql.DB
-	tickers map[string]*time.Ticker
-	mu      sync.Mutex
+	db       *sql.DB
+	tickers  map[string]*time.Ticker
+	mu       sync.Mutex
+	demoMode bool
 }
 
-func NewCronController(db *sql.DB) *CronController {
+func NewCronController(db *sql.DB, demoMode bool) *CronController {
 	c := &CronController{
+		demoMode: demoMode,
 		db:      db,
 		tickers: make(map[string]*time.Ticker),
 	}
@@ -49,6 +51,10 @@ func NewCronController(db *sql.DB) *CronController {
 }
 
 func (c *CronController) listCronJobs(w http.ResponseWriter, r *http.Request) {
+	if c.demoMode {
+		http.Error(w, "Cron jobs are disabled in demo mode", http.StatusForbidden)
+		return
+	}
 	rows, err := c.db.QueryContext(r.Context(), `SELECT id, name, query, interval_seconds, created_at FROM cron_jobs`)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to list cron jobs: %v", err), http.StatusInternalServerError)
@@ -75,6 +81,10 @@ func (c *CronController) listCronJobs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *CronController) createCronJob(w http.ResponseWriter, r *http.Request) {
+	if c.demoMode {
+		http.Error(w, "Cron jobs are disabled in demo mode", http.StatusForbidden)
+		return
+	}
 	var req struct {
 		Name            string `json:"name"`
 		Query           string `json:"query"`
@@ -114,6 +124,10 @@ func (c *CronController) createCronJob(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *CronController) deleteCronJob(w http.ResponseWriter, r *http.Request) {
+	if c.demoMode {
+		http.Error(w, "Cron jobs are disabled in demo mode", http.StatusForbidden)
+		return
+	}
 	id := chi.URLParam(r, "id")
 
 	c.mu.Lock()

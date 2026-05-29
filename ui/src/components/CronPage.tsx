@@ -17,6 +17,7 @@ import {
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { config } from '../config.ts';
+import { useDemoMode } from '../DemoModeContext';
 
 interface CronJob {
   id: string;
@@ -27,6 +28,7 @@ interface CronJob {
 }
 
 export const CronPage: React.FC = () => {
+  const demoMode = useDemoMode();
   const [jobs, setJobs] = useState<CronJob[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -110,6 +112,12 @@ export const CronPage: React.FC = () => {
         Cron jobs run SQL queries on a schedule against your local DuckDB store. Use them to implement <strong>data retention policies</strong> — for example, deleting spans older than a certain age to keep storage in check.
       </Alert>
 
+      {demoMode && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          Cron jobs are not available in demo mode.
+        </Alert>
+      )}
+
       <Paper sx={{ p: 3, mb: 3 }}>
         <Typography variant="h6" gutterBottom>
           New Cron Job
@@ -123,6 +131,7 @@ export const CronPage: React.FC = () => {
             size="small"
             placeholder="Delete spans older than 1 day"
             InputLabelProps={{ shrink: true }}
+            disabled={demoMode}
           />
           <TextField
             label="Query"
@@ -134,6 +143,7 @@ export const CronPage: React.FC = () => {
             size="small"
             placeholder="DELETE FROM denormalized_span WHERE start_time_unix_nano < epoch_ns(now() - INTERVAL 1 DAY)"
             InputLabelProps={{ shrink: true }}
+            disabled={demoMode}
           />
           <TextField
             label="Interval (seconds)"
@@ -144,12 +154,13 @@ export const CronPage: React.FC = () => {
             size="small"
             inputProps={{ min: 1 }}
             sx={{ maxWidth: 200 }}
+            disabled={demoMode}
           />
           <Box>
             <Button
               type="submit"
               variant="contained"
-              disabled={submitting}
+              disabled={submitting || demoMode}
               sx={{ backgroundColor: '#2C6B6B', '&:hover': { backgroundColor: '#235555' } }}
             >
               {submitting ? <CircularProgress size={20} /> : 'Create'}
@@ -202,6 +213,7 @@ export const CronPage: React.FC = () => {
                         color="error"
                         onClick={() => handleDelete(job.id)}
                         aria-label="delete"
+                        disabled={demoMode}
                       >
                         <DeleteIcon fontSize="small" />
                       </IconButton>

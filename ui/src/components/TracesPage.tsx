@@ -38,6 +38,7 @@ import TraceCountChart from './TraceCountChart';
 import { TraceDetails } from './TraceDetails';
 import { TimePercentile } from './PercentileChart';
 import { config } from "../config.ts";
+import { useDemoMode } from '../DemoModeContext';
 
 interface SearchResult {
   TraceID: string;
@@ -150,6 +151,7 @@ const FilterChipInput = ({ value, onChange, onSearch }: { value: string; onChang
 };
 
 export const TracesPage: React.FC = () => {
+  const demoMode = useDemoMode();
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -629,12 +631,18 @@ export const TracesPage: React.FC = () => {
         </FormControl>
 
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Typography variant="body2">SQL</Typography>
+          <Typography variant="body2" color={demoMode ? 'text.disabled' : 'inherit'}>SQL</Typography>
           <Switch
             checked={sqlMode}
             onChange={e => setSqlMode(e.target.checked)}
             size="small"
+            disabled={demoMode}
           />
+          {demoMode && (
+            <Typography variant="caption" color="text.disabled">
+              (not available in demo mode)
+            </Typography>
+          )}
         </Box>
 
       </Box>

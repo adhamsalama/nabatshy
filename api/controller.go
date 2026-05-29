@@ -24,7 +24,8 @@ var (
 )
 
 type TelemetryController struct {
-	service TelemetryService
+	service  TelemetryService
+	demoMode bool
 }
 
 func (c *TelemetryController) getTopNSlowestTraces(w http.ResponseWriter, r *http.Request) {
@@ -198,6 +199,10 @@ func (c *TelemetryController) searchTraces(w http.ResponseWriter, r *http.Reques
 		dateRange = GetDateRangeFromQuery(timeRange)
 	}
 	sqlFilter := r.URL.Query().Get("sql_filter")
+	if sqlFilter != "" && c.demoMode {
+		http.Error(w, "SQL filter is disabled in demo mode", http.StatusForbidden)
+		return
+	}
 	traceOrSpan := r.URL.Query().Get("traceOrSpan")
 	results, err := c.service.SearchTraces(r.Context(), dateRange, query, sqlFilter, page, pageSize, sort, traceOrSpan)
 	if err != nil {
@@ -363,6 +368,10 @@ func (c *TelemetryController) getSearchMetrics(w http.ResponseWriter, r *http.Re
 	}
 
 	sqlFilter := r.URL.Query().Get("sql_filter")
+	if sqlFilter != "" && c.demoMode {
+		http.Error(w, "SQL filter is disabled in demo mode", http.StatusForbidden)
+		return
+	}
 	traceOrSpan := r.URL.Query().Get("traceOrSpan")
 	metrics, err := c.service.GetSearchMetrics(r.Context(), dateRange, query, sqlFilter, percentile, traceOrSpan)
 	if err != nil {
@@ -386,6 +395,10 @@ func (c *TelemetryController) getUniqueServiceNames(w http.ResponseWriter, r *ht
 }
 
 func (c *TelemetryController) debugQuery(w http.ResponseWriter, r *http.Request) {
+	if c.demoMode {
+		http.Error(w, "SQL queries are disabled in demo mode", http.StatusForbidden)
+		return
+	}
 	sql := r.URL.Query().Get("sql")
 	if sql == "" {
 		http.Error(w, "missing 'sql' query param", http.StatusBadRequest)
