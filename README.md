@@ -4,6 +4,8 @@
 
 **The observability platform that fits in a single binary.**
 
+**[Live Demo →](https://nabatshy.adhamsalama.dev/?query=&page=1&pageSize=20&sortField=start_time&sortOrder=desc&traceOrSpan=trace&timePreset=custom&start=2026-05-29T21%3A24%3A00.000Z&end=2026-05-29T22%3A00%3A00.000Z&columns=traceId%2CspanId%2Cname%2Cservice%2Cduration%2CstartTime%2CendTime&autoRefresh=false&intervalPreset=30)**
+
 Free and open source. Drop in a single executable, point your services at it with OpenTelemetry, and get a full observability UI with traces, metrics, logs, and dashboards. No external database. No infrastructure to manage.
 
 ![Traces](https://raw.githubusercontent.com/adhamsalama/assets/main/nabatshy/ss-traces.png)
