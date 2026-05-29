@@ -24,9 +24,14 @@ type TelemetryCollectorController struct {
 	service        TelemetryCollectorService
 	metricsService MetricsService
 	logsService    LogsService
+	demoMode       bool
 }
 
 func (c *TelemetryCollectorController) ingestMetricsHTTPRequest(w http.ResponseWriter, r *http.Request) {
+	if c.demoMode {
+		http.Error(w, "ingestion is disabled in demo mode", http.StatusForbidden)
+		return
+	}
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "failed to read body: "+err.Error(), http.StatusBadRequest)
@@ -66,6 +71,10 @@ func (c *TelemetryCollectorController) ingestMetricsHTTPRequest(w http.ResponseW
 }
 
 func (c *TelemetryCollectorController) ingestTraceHTTPRequest(w http.ResponseWriter, r *http.Request) {
+	if c.demoMode {
+		http.Error(w, "ingestion is disabled in demo mode", http.StatusForbidden)
+		return
+	}
 	if r.Method != http.MethodPost {
 		fmt.Println("only POST allowed")
 		http.Error(w, "only POST allowed", http.StatusMethodNotAllowed)
@@ -241,6 +250,10 @@ func (c *TelemetryCollectorController) formatOldOTELData(
 }
 
 func (c *TelemetryCollectorController) ingestLogsHTTPRequest(w http.ResponseWriter, r *http.Request) {
+	if c.demoMode {
+		http.Error(w, "ingestion is disabled in demo mode", http.StatusForbidden)
+		return
+	}
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "failed to read body: "+err.Error(), http.StatusBadRequest)
@@ -283,7 +296,7 @@ func (c *TelemetryCollectorController) RegisterRoutes(r chi.Router) {
 	r.Post("/v1/logs", c.ingestLogsHTTPRequest)
 }
 
-func Run(db *sql.DB, port string) {
+func Run(db *sql.DB, port string, demoMode bool) {
 	telService := TelemetryCollectorService{
 		writer: NewSpanWriter(db),
 	}
@@ -297,6 +310,7 @@ func Run(db *sql.DB, port string) {
 		service:        telService,
 		metricsService: metricsService,
 		logsService:    logsService,
+		demoMode:       demoMode,
 	}
 
 	r := chi.NewRouter()

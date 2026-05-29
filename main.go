@@ -36,7 +36,7 @@ func main() {
 
 	os.Setenv("DUCKDB_PATH", *dbPath)
 	sqlDB := db.InitDuckDB(*inMemory)
-	go func() { collector.Run(sqlDB, *otelPort) }()
+	go func() { collector.Run(sqlDB, *otelPort, *demoMode) }()
 	go utils.ServeUI(content, uiDir, *uiPort)
 	api.Run(sqlDB, *apiPort, *demoMode)
 }
