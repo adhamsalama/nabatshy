@@ -116,6 +116,7 @@ func InitDuckDB(inMemory bool) *sql.DB {
 		db = sql.OpenDB(connector)
 	}
 
+	db.SetMaxOpenConns(1)
 	if _, err := db.Exec(createTable); err != nil {
 		panic(fmt.Sprintf("creating schema: %v", err))
 	}
