@@ -587,6 +587,7 @@ func (s *TelemetryService) GetSpanDetails(ctx context.Context, spanID string) (*
 
 		detail.Events[i] = event
 	}
+	rows.Close()
 
 	avgDS := s.DB.
 		From(goqu.T("denormalized_span")).
